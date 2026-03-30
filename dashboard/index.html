@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Wolffia Monitor</title>
+</head>
+
+<body>
+
+<h1>Wolffia Pond Dashboard</h1>
+
+<h2>Camera</h2>
+<img src="/video" width="600">
+
+<h2>Coverage: <span id="coverage">0</span>%</h2>
+
+<h2>Sensor Data</h2>
+
+<p>Temperature: <span id="temp">-</span></p>
+<p>pH: <span id="ph">-</span></p>
+<p>Water Level: <span id="water">-</span></p>
+
+<script>
+
+async function loadData(){
+
+    const res = await fetch("/latest")
+    const data = await res.json()
+
+    if(data.length > 0){
+
+        document.getElementById("coverage").innerText =
+            data[0].coverage || 0
+
+        document.getElementById("temp").innerText =
+            data[0].temp || "-"
+
+        document.getElementById("ph").innerText =
+            data[0].ph || "-"
+
+        document.getElementById("water").innerText =
+            data[0].water_level || "-"
+    }
+}
+
+loadData()
+
+setInterval(loadData,3000)
+
+</script>
+
+</body>
+</html>

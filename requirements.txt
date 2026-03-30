@@ -1,0 +1,10 @@
+fastapi==0.135.1
+uvicorn==0.41.0
+pymongo==4.16.0
+paho-mqtt==2.1.0
+opencv-python==4.13.0.92
+numpy==2.4.2
+gpiozero==2.0.1
+lgpio==0.2.2.0
+adafruit-blinka==8.70.0
+adafruit-circuitpython-ads1x15==3.0.2
