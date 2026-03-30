@@ -3,6 +3,50 @@
 
 <head>
 <title>Wolffia Monitor</title>
+<style>
+body {
+    font-family: sans-serif;
+    margin: 24px;
+    line-height: 1.5;
+}
+
+.controls {
+    display: grid;
+    gap: 20px;
+    margin-top: 24px;
+}
+
+.panel {
+    border: 1px solid #ccc;
+    border-radius: 12px;
+    padding: 16px;
+    max-width: 420px;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+input {
+    width: 90px;
+    padding: 6px;
+}
+
+button {
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+#message {
+    margin-top: 16px;
+    color: #0b5394;
+    min-height: 24px;
+}
+</style>
 </head>
 
 <body>
@@ -10,17 +54,74 @@
 <h1>Wolffia Pond Dashboard</h1>
 
 <h2>Camera</h2>
-<img src="/video" width="600">
-
-<h2>Coverage: <span id="coverage">0</span>%</h2>
+<img src="/video" width="640" alt="Live camera stream">
 
 <h2>Sensor Data</h2>
 
 <p>Temperature: <span id="temp">-</span></p>
 <p>pH: <span id="ph">-</span></p>
-<p>Water Level: <span id="water">-</span></p>
+
+<div class="controls">
+<div class="panel">
+<h2>Light</h2>
+<p>Status: <span id="light-status">-</span></p>
+<div class="row">
+<button onclick="controlLight('on')">Turn On</button>
+<button onclick="controlLight('off')">Turn Off</button>
+</div>
+</div>
+
+<div class="panel">
+<h2>Water Pump</h2>
+<p>Status: <span id="pump-water-status">-</span></p>
+<div class="row">
+<label for="pump-water-duration">Duration (s)</label>
+<input id="pump-water-duration" type="number" min="1" value="5">
+<button onclick="startPumpWater()">Start</button>
+<button onclick="stopPumpWater()">Stop</button>
+</div>
+</div>
+
+<div class="panel">
+<h2>Fertilizer Pumps</h2>
+<p>Status: <span id="pump-fertilizer-status">-</span></p>
+<div class="row">
+<label for="pump-fertilizer-duration">Duration (s)</label>
+<input id="pump-fertilizer-duration" type="number" min="1" value="5">
+<button onclick="startPumpFertilizer()">Start</button>
+<button onclick="stopPumpFertilizer()">Stop</button>
+</div>
+</div>
+</div>
+
+<p id="message"></p>
 
 <script>
+
+function displayValue(value, fallback = "-"){
+    return value ?? fallback
+}
+
+function setMessage(text, isError = false){
+    const message = document.getElementById("message")
+    message.innerText = text
+    message.style.color = isError ? "#b00020" : "#0b5394"
+}
+
+function renderActuatorStatus(data){
+    document.getElementById("light-status").innerText =
+        data.light.is_on ? "ON" : "OFF"
+
+    document.getElementById("pump-water-status").innerText =
+        data.pump_water.is_running
+            ? `RUNNING (${data.pump_water.remaining_seconds}s left)`
+            : "OFF"
+
+    document.getElementById("pump-fertilizer-status").innerText =
+        data.pump_fertilizer.is_running
+            ? `RUNNING (${data.pump_fertilizer.remaining_seconds}s left, pins: ${data.pump_fertilizer.pins.join(", ")})`
+            : `OFF (pins: ${data.pump_fertilizer.pins.join(", ")})`
+}
 
 async function loadData(){
 
@@ -28,24 +129,105 @@ async function loadData(){
     const data = await res.json()
 
     if(data.length > 0){
-
-        document.getElementById("coverage").innerText =
-            data[0].coverage || 0
-
         document.getElementById("temp").innerText =
-            data[0].temp || "-"
+            displayValue(data[0].temp)
 
         document.getElementById("ph").innerText =
-            data[0].ph || "-"
+            displayValue(data[0].ph)
+    }
+}
 
-        document.getElementById("water").innerText =
-            data[0].water_level || "-"
+async function loadActuatorStatus(){
+    const res = await fetch("/actuators/status")
+    const data = await res.json()
+    renderActuatorStatus(data)
+}
+
+async function postJson(url, payload){
+    const options = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    }
+
+    if(payload !== undefined){
+        options.body = JSON.stringify(payload)
+    }
+
+    const res = await fetch(url, options)
+    const data = await res.json()
+
+    if(!res.ok){
+        throw new Error(data.detail || "request failed")
+    }
+
+    return data
+}
+
+async function controlLight(action){
+    try {
+        await postJson(`/actuators/light/${action}`)
+        await loadActuatorStatus()
+        setMessage(`Light turned ${action}`)
+    } catch (error) {
+        setMessage(error.message, true)
+    }
+}
+
+async function startPumpWater(){
+    const duration = Number(document.getElementById("pump-water-duration").value)
+
+    try {
+        await postJson("/actuators/pump-water/start", {
+            duration_seconds: duration,
+        })
+        await loadActuatorStatus()
+        setMessage(`Water pump started for ${duration} seconds`)
+    } catch (error) {
+        setMessage(error.message, true)
+    }
+}
+
+async function stopPumpWater(){
+    try {
+        await postJson("/actuators/pump-water/stop")
+        await loadActuatorStatus()
+        setMessage("Water pump stopped")
+    } catch (error) {
+        setMessage(error.message, true)
+    }
+}
+
+async function startPumpFertilizer(){
+    const duration = Number(document.getElementById("pump-fertilizer-duration").value)
+
+    try {
+        await postJson("/actuators/pump-fertilizer/start", {
+            duration_seconds: duration,
+        })
+        await loadActuatorStatus()
+        setMessage(`Fertilizer pumps started for ${duration} seconds`)
+    } catch (error) {
+        setMessage(error.message, true)
+    }
+}
+
+async function stopPumpFertilizer(){
+    try {
+        await postJson("/actuators/pump-fertilizer/stop")
+        await loadActuatorStatus()
+        setMessage("Fertilizer pumps stopped")
+    } catch (error) {
+        setMessage(error.message, true)
     }
 }
 
 loadData()
+loadActuatorStatus()
 
 setInterval(loadData,3000)
+setInterval(loadActuatorStatus,1000)
 
 </script>
 

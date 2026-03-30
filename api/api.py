@@ -1,18 +1,29 @@
 import os
-import datetime
-import threading
-import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from pymongo import MongoClient
 
-from config import CORS_ALLOW_ORIGINS, MONGO_COLLECTION, MONGO_DB, MONGO_URI
-from sensors.camera import gen_frames, get_coverage
-from sensors.ph import read_ph
-from sensors.temp import read_temp
-from sensors.ultrasonic import read_water_level
+from actuators.ligth import get_light_status, light_off, light_on
+from actuators.pump_fertilizer_control import (
+    dispense_fertilizer,
+    get_pump_fertilizer_status,
+    stop_pump_fertilizer,
+)
+from actuators.pump_water_control import (
+    get_pump_water_status,
+    run_pump_water,
+    stop_pump_water,
+)
+from config import (
+    CORS_ALLOW_ORIGINS,
+    MONGO_COLLECTION,
+    MONGO_DB,
+    MONGO_URI,
+)
+from camera.camera import gen_frames
 
 app = FastAPI()
 
@@ -28,45 +39,40 @@ mongo = MongoClient(MONGO_URI)
 db = mongo[MONGO_DB]
 collection = db[MONGO_COLLECTION]
 
-# ----------------- Background Logger -----------------
-def background_sensor_logger():
-    """ฟังก์ชันนี้จะทำงานวนลูปอยู่เบื้องหลังเพื่อเก็บข้อมูลลง Database"""
-    while True:
-        try:
-            # 1. อ่านค่าจากเซนเซอร์จริง
-            current_temp = read_temp()
-            current_water_level = read_water_level() 
-            current_coverage = get_coverage()
 
-            # 2. อ่านค่าอื่นๆ (ถ้ามีเซนเซอร์จริงแล้ว ให้นำมาแทนที่ค่าจำลองตรงนี้)
-            current_ph = read_ph()  
-            
-            # 3. จัดเตรียมข้อมูลเป็น Dictionary
-            data = {
-                "temp": current_temp,
-                "ph": current_ph,
-                "coverage": current_coverage,
-                "water_level": current_water_level,
-                "timestamp": datetime.datetime.now()
-            }
-            
-            # 4. บันทึกลง MongoDB
-            collection.insert_one(data)
-            print(f"[{datetime.datetime.now()}] บันทึกข้อมูลสำเร็จ {data}")
-            
-        except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}")
-            
-        # 5. หน่วงเวลา (ใส่ 300 คือ 5 นาที) 
-        # *ข้อแนะนำ: ตอนทดสอบระบบครั้งแรก ลองแก้เป็น 10 (วินาที) เพื่อให้เห็นข้อมูลขึ้นหน้าเว็บไวๆ ก่อนครับ
-        time.sleep(30)
+class PumpWaterRequest(BaseModel):
+    duration_seconds: float
+
+
+class PumpFertilizerRequest(BaseModel):
+    duration_seconds: float
+    pump_speed: float | None = None
+
+def serialize_document(document):
+    if document is None:
+        return None
+
+    document["_id"] = str(document["_id"])
+    return document
+
+
+def get_latest_document():
+    return collection.find_one(sort=[("timestamp", -1)])
+
+
+def get_actuator_status():
+    return {
+        "light": get_light_status(),
+        "pump_water": get_pump_water_status(),
+        "pump_fertilizer": get_pump_fertilizer_status(),
+    }
 
 @app.on_event("startup")
 def startup_event():
-    """สั่งให้ Background Logger เริ่มทำงานพร้อมๆ กับตอนที่เปิดรัน FastAPI"""
-    thread = threading.Thread(target=background_sensor_logger, daemon=True)
-    thread.start()
-    print("เริ่มระบบบันทึกข้อมูลเซนเซอร์อัตโนมัติ...")
+    """ตั้งค่าบริการที่ต้องทำตอน API เริ่มทำงาน"""
+    print("API จะอ่านค่าล่าสุดจาก MongoDB โดยไม่จับ hardware โดยตรง")
+    print("กล้องจะถูกสตรีมผ่านหน้าเว็บที่ /video")
+    print("actuator controls พร้อมใช้งานที่ /actuators/*")
 
 # ----------------- API Endpoints -----------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -88,12 +94,10 @@ def serve_dashboard():
 
 @app.get("/latest")
 def get_latest():
-    data = collection.find().sort("timestamp", -1).limit(1)
-    result = []
-    for item in data:
-        item["_id"] = str(item["_id"])
-        result.append(item)
-    return result
+    latest = serialize_document(get_latest_document())
+    if latest is None:
+        return []
+    return [latest]
 
 @app.get("/history")
 def get_history():
@@ -104,14 +108,52 @@ def get_history():
         result.append(item)
     return result
 
+@app.get("/temperature")
+def get_temperature():
+    latest = get_latest_document()
+    return {"temperature": 0.0 if latest is None else latest.get("temp", 0.0)}
+
+@app.get("/actuators/status")
+def actuator_status():
+    return get_actuator_status()
+
+@app.post("/actuators/light/on")
+def turn_light_on():
+    return {"light": light_on()}
+
+@app.post("/actuators/light/off")
+def turn_light_off():
+    return {"light": light_off()}
+
+@app.post("/actuators/pump-water/start")
+def start_pump_water(payload: PumpWaterRequest):
+    try:
+        status = run_pump_water(payload.duration_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"pump_water": status}
+
+@app.post("/actuators/pump-water/stop")
+def stop_water_pump():
+    return {"pump_water": stop_pump_water()}
+
+@app.post("/actuators/pump-fertilizer/start")
+def start_pump_fertilizer(payload: PumpFertilizerRequest):
+    try:
+        status = dispense_fertilizer(payload.duration_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"pump_fertilizer": status}
+
+@app.post("/actuators/pump-fertilizer/stop")
+def stop_fertilizer_pump():
+    return {"pump_fertilizer": stop_pump_fertilizer()}
+
 @app.get("/video")
 def video_feed():
     return StreamingResponse(
         gen_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        media_type="multipart/x-mixed-replace; boundary=frame",
     )
-
-@app.get("/temperature")
-def get_temperature():
-    temp = read_temp()
-    return {"temperature": temp}

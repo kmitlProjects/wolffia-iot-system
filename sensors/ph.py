@@ -6,19 +6,29 @@ from gpiozero.exc import SPISoftwareFallback
 from gpiozero.pins.lgpio import LGPIOFactory
 
 MCP3008_CHANNEL = 0  # pH sensor Po -> MCP3008 pin 1 (CH0)
-PH7_VOLTAGE = 3.825  # ใช้ค่าเดิมไว้ก่อน ควร calibrate ใหม่เมื่อเปลี่ยน ADC
+PH7_VOLTAGE = 1.65 # ใช้ค่าเดิมไว้ก่อน ควร calibrate ใหม่เมื่อเปลี่ยน ADC
 SLOPE = 0.18         # ใช้ logic เดิมไว้ก่อน
 
 warnings.filterwarnings("ignore", category=SPISoftwareFallback)
 
+sensor = None
 
-try:
-    factory = LGPIOFactory()
-    sensor = MCP3008(channel=MCP3008_CHANNEL, pin_factory=factory)
-    print(f"เชื่อมต่อ pH sensor ผ่าน MCP3008 CH{MCP3008_CHANNEL} สำเร็จ")
-except Exception as e:
-    print(f"ไม่สามารถเชื่อมต่อกับ MCP3008 CH{MCP3008_CHANNEL} ได้: {e}")
-    sensor = None
+
+def _get_sensor():
+    global sensor
+
+    if sensor is not None:
+        return sensor
+
+    try:
+        factory = LGPIOFactory()
+        sensor = MCP3008(channel=MCP3008_CHANNEL, pin_factory=factory)
+        print(f"เชื่อมต่อ pH sensor ผ่าน MCP3008 CH{MCP3008_CHANNEL} สำเร็จ")
+    except Exception as e:
+        print(f"ไม่สามารถเชื่อมต่อกับ MCP3008 CH{MCP3008_CHANNEL} ได้: {e}")
+        sensor = None
+
+    return sensor
 
 
 def _voltage_to_ph(voltage: float) -> float:
@@ -26,9 +36,10 @@ def _voltage_to_ph(voltage: float) -> float:
         raise ZeroDivisionError("SLOPE ต้องไม่เป็น 0")
     return 7 + ((PH7_VOLTAGE - voltage) / SLOPE)
 
-
 def read_ph_snapshot():
-    if sensor is None:
+    active_sensor = _get_sensor()
+
+    if active_sensor is None:
         return {
             "raw": 0,
             "value": 0.0,
@@ -37,10 +48,10 @@ def read_ph_snapshot():
         }
 
     try:
-        voltage = sensor.voltage
+        voltage = active_sensor.voltage
         return {
-            "raw": sensor.raw_value,
-            "value": round(sensor.value, 4),
+            "raw": active_sensor.raw_value,
+            "value": round(active_sensor.value, 4),
             "voltage": round(voltage, 3),
             "ph": round(_voltage_to_ph(voltage), 2),
         }
@@ -59,7 +70,7 @@ def read_ph():
 
 
 if __name__ == "__main__":
-    if sensor is not None:
+    if _get_sensor() is not None:
         print("เริ่มอ่านค่า pH จาก MCP3008 CH0... (กด Ctrl+C เพื่อหยุด)")
         while True:
             snapshot = read_ph_snapshot()
