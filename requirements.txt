@@ -6,5 +6,3 @@ opencv-python==4.13.0.92
 numpy==2.4.2
 gpiozero==2.0.1
 lgpio==0.2.2.0
-adafruit-blinka==8.70.0
-adafruit-circuitpython-ads1x15==3.0.2

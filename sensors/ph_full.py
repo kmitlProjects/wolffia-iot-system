@@ -1,46 +1,57 @@
-import time
 import statistics
-import board
-import busio
-import adafruit_ads1x15.ads1115 as ADS
-from adafruit_ads1x15.analog_in import AnalogIn
+import time
+import warnings
 
-# ==============================
-# CONFIGURATION
-# ==============================
+from gpiozero import MCP3008
+from gpiozero.exc import SPISoftwareFallback
+from gpiozero.pins.lgpio import LGPIOFactory
 
-PH7_VOLTAGE = 3.825     # ค่า voltage ตอนอยู่ใน pH 7 (คุณวัดได้)
-SLOPE = 0.18            # ค่าเริ่มต้น (ปรับได้ภายหลัง)
-SAMPLES = 10            # จำนวนครั้งที่อ่านแล้วเอาเฉลี่ย
+MCP3008_CHANNEL = 0  # pH sensor Po -> MCP3008 pin 1 (CH0)
+PH7_VOLTAGE = 3.825
+SLOPE = 0.18
+SAMPLES = 10
 
-# ==============================
-# INITIALIZE I2C + ADS1115
-# ==============================
+warnings.filterwarnings("ignore", category=SPISoftwareFallback)
 
-i2c = busio.I2C(board.SCL, board.SDA)
-ads = ADS.ADS1115(i2c)
-chan = AnalogIn(ads, 0)  # A0
+
+def voltage_to_ph(voltage: float) -> float:
+    if SLOPE == 0:
+        raise ZeroDivisionError("SLOPE ต้องไม่เป็น 0")
+    return 7 + ((PH7_VOLTAGE - voltage) / SLOPE)
+
+
+try:
+    factory = LGPIOFactory()
+    sensor = MCP3008(channel=MCP3008_CHANNEL, pin_factory=factory)
+except Exception as e:
+    print(f"ไม่สามารถเชื่อมต่อกับ MCP3008 CH{MCP3008_CHANNEL} ได้: {e}")
+    sensor = None
+
 
 print("pH Sensor System Started...")
 print("Press Ctrl+C to stop\n")
 
-# ==============================
-# MAIN LOOP
-# ==============================
+def main():
+    if sensor is None:
+        print("ระบบหยุดทำงานเนื่องจากหา Hardware ไม่พบ")
+        raise SystemExit(1)
 
-while True:
-    readings = []
+    while True:
+        voltage_samples = []
+        raw_samples = []
 
-    # อ่านหลายครั้งเพื่อลด noise
-    for _ in range(SAMPLES):
-        readings.append(chan.voltage)
-        time.sleep(0.05)
+        for _ in range(SAMPLES):
+            voltage_samples.append(sensor.voltage)
+            raw_samples.append(sensor.raw_value)
+            time.sleep(0.05)
 
-    avg_voltage = statistics.mean(readings)
+        avg_voltage = statistics.mean(voltage_samples)
+        avg_raw = round(statistics.mean(raw_samples))
+        ph = voltage_to_ph(avg_voltage)
 
-    # สูตรแปลง Voltage -> pH
-    ph = 7 - ((avg_voltage - PH7_VOLTAGE) / SLOPE)
+        print(f"Raw: {avg_raw:4d} | Voltage: {avg_voltage:.3f} V | pH: {ph:.2f}")
+        time.sleep(1)
 
-    print(f"Voltage: {avg_voltage:.3f} V  |  pH: {ph:.2f}")
 
-    time.sleep(1)
+if __name__ == "__main__":
+    main()

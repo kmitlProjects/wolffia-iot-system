@@ -1,52 +1,74 @@
 import time
-import board
-import busio
-import adafruit_ads1x15.ads1115 as ADS
-from adafruit_ads1x15.analog_in import AnalogIn
+import warnings
 
-# i2c = busio.I2C(board.SCL, board.SDA)
-# ads = ADS.ADS1115(i2c)
-# chan = AnalogIn(ads, 0)   # A0
-# พยายามสร้าง I2C และ ADS Object
+from gpiozero import MCP3008
+from gpiozero.exc import SPISoftwareFallback
+from gpiozero.pins.lgpio import LGPIOFactory
+
+MCP3008_CHANNEL = 0  # pH sensor Po -> MCP3008 pin 1 (CH0)
+PH7_VOLTAGE = 3.825  # ใช้ค่าเดิมไว้ก่อน ควร calibrate ใหม่เมื่อเปลี่ยน ADC
+SLOPE = 0.18         # ใช้ logic เดิมไว้ก่อน
+
+warnings.filterwarnings("ignore", category=SPISoftwareFallback)
+
+
 try:
-    i2c = busio.I2C(board.SCL, board.SDA)
-    ads = ADS.ADS1115(i2c)
-    chan = AnalogIn(ads, ADS.P0)  # ใช้ ADS.P0 เพื่อความชัดเจน
+    factory = LGPIOFactory()
+    sensor = MCP3008(channel=MCP3008_CHANNEL, pin_factory=factory)
+    print(f"เชื่อมต่อ pH sensor ผ่าน MCP3008 CH{MCP3008_CHANNEL} สำเร็จ")
 except Exception as e:
-    print(f"ไม่สามารถเชื่อมต่อกับ ADS1115 ได้: {e}")
-    ads = None
+    print(f"ไม่สามารถเชื่อมต่อกับ MCP3008 CH{MCP3008_CHANNEL} ได้: {e}")
+    sensor = None
 
-PH7_VOLTAGE = 3.825   # ค่าที่วัดได้ในน้ำดื่ม
-SLOPE = 0.18          # ค่าเริ่มต้นประมาณ
 
-#while True:
-#    voltage = chan.voltage
-#    ph = 7 - ((voltage - PH7_VOLTAGE) / SLOPE)
-#    print(f"Voltage: {voltage:.3f} V  |  pH: {ph:.2f}")
-#    time.sleep(1)
+def _voltage_to_ph(voltage: float) -> float:
+    if SLOPE == 0:
+        raise ZeroDivisionError("SLOPE ต้องไม่เป็น 0")
+    return 7 + ((PH7_VOLTAGE - voltage) / SLOPE)
 
-# ฟังก์ชันอ่าน pH
-def read_ph():
-    if ads is None:
-        return 0.0  # คืนค่า 0 ถ้าไม่มี hardware เชื่อมต่ออยู่
+
+def read_ph_snapshot():
+    if sensor is None:
+        return {
+            "raw": 0,
+            "value": 0.0,
+            "voltage": 0.0,
+            "ph": 0.0,
+        }
+
     try:
-        voltage = chan.voltage
-
-        # สูตรประมาณค่า pH (ต้อง calibrate จริงภายหลัง)
-        ph_value = 7 + ((PH7_VOLTAGE - voltage) / SLOPE)
-
-        return round(ph_value, 2)
+        voltage = sensor.voltage
+        return {
+            "raw": sensor.raw_value,
+            "value": round(sensor.value, 4),
+            "voltage": round(voltage, 3),
+            "ph": round(_voltage_to_ph(voltage), 2),
+        }
     except Exception as e:
         print(f"Error reading pH: {e}")
-        return 0.0
+        return {
+            "raw": 0,
+            "value": 0.0,
+            "voltage": 0.0,
+            "ph": 0.0,
+        }
 
-# test run
+
+def read_ph():
+    return read_ph_snapshot()["ph"]
+
+
 if __name__ == "__main__":
-    if ads is not None:
+    if sensor is not None:
+        print("เริ่มอ่านค่า pH จาก MCP3008 CH0... (กด Ctrl+C เพื่อหยุด)")
         while True:
-            ph = read_ph()
-            # ดึง Voltage มาโชว์ด้วยเพื่อความง่ายในการ Calibrate
-            print(f"Voltage: {chan.voltage:.3f} V | pH: {ph}")
+            snapshot = read_ph_snapshot()
+            print(
+                f"Raw: {snapshot['raw']:4d} | "
+                f"Value: {snapshot['value']:.4f} | "
+                f"Voltage: {snapshot['voltage']:.3f} V | "
+                f"pH: {snapshot['ph']:.2f}"
+            )
             time.sleep(2)
     else:
         print("ระบบหยุดทำงานเนื่องจากหา Hardware ไม่พบ")
