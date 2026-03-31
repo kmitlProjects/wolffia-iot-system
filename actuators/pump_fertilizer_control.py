@@ -3,132 +3,171 @@ import threading
 import time
 
 from gpiozero import OutputDevice
+
 from config import PUMP_FERTILIZER_ACTIVE_LOW, PUMP_FERTILIZER_PINS
 
 
 _lock = threading.RLock()
-_devices = []
-_is_running = False
-_started_at = None
-_duration_seconds = 0.0
-_worker = None
-_run_token = 0
+_pumps = []
 
 
-def _build_status():
+def _build_pump_status(pump: dict):
     remaining_seconds = 0.0
-    if _is_running and _started_at is not None:
-        elapsed = time.time() - _started_at
-        remaining_seconds = max(_duration_seconds - elapsed, 0.0)
+    if pump["is_running"] and pump["started_at"] is not None:
+        elapsed = time.time() - pump["started_at"]
+        remaining_seconds = max(pump["duration_seconds"] - elapsed, 0.0)
 
     return {
-        "pins": list(PUMP_FERTILIZER_PINS),
-        "pin_count": len(PUMP_FERTILIZER_PINS),
+        "id": pump["id"],
+        "pin": pump["pin"],
         "active_low": PUMP_FERTILIZER_ACTIVE_LOW,
-        "is_running": _is_running,
-        "duration_seconds": _duration_seconds,
+        "is_running": pump["is_running"],
+        "duration_seconds": pump["duration_seconds"],
         "remaining_seconds": round(remaining_seconds, 1),
     }
 
 
-def _ensure_initialized():
-    global _devices
+def _build_status():
+    pumps = [_build_pump_status(pump) for pump in _pumps]
+    running_count = sum(1 for pump in pumps if pump["is_running"])
 
-    if _devices:
+    return {
+        "pump_count": len(pumps),
+        "running_count": running_count,
+        "active_low": PUMP_FERTILIZER_ACTIVE_LOW,
+        "pumps": pumps,
+    }
+
+
+def _ensure_initialized():
+    global _pumps
+
+    if _pumps:
         return
 
     if not PUMP_FERTILIZER_PINS:
         raise ValueError("PUMP_FERTILIZER_PINS must contain at least one GPIO pin")
 
-    _devices = [
-        OutputDevice(
+    _pumps = []
+    for idx, pin in enumerate(PUMP_FERTILIZER_PINS, start=1):
+        device = OutputDevice(
             pin,
             active_high=not PUMP_FERTILIZER_ACTIVE_LOW,
             initial_value=False,
         )
-        for pin in PUMP_FERTILIZER_PINS
-    ]
-
-    for device in _devices:
         device.off()
+        _pumps.append(
+            {
+                "id": idx,
+                "pin": pin,
+                "device": device,
+                "is_running": False,
+                "started_at": None,
+                "duration_seconds": 0.0,
+                "worker": None,
+                "run_token": 0,
+            }
+        )
 
 
-def _set_all_devices(is_on: bool):
-    for device in _devices:
-        if is_on:
-            device.on()
-        else:
-            device.off()
+def _get_pump_locked(pump_id: int):
+    _ensure_initialized()
+
+    if not (1 <= pump_id <= len(_pumps)):
+        raise ValueError(f"fertilizer pump {pump_id} does not exist")
+
+    return _pumps[pump_id - 1]
 
 
-def _stop_locked():
-    global _is_running
-    global _started_at
-    global _duration_seconds
-
-    if _devices:
-        _set_all_devices(False)
-    _is_running = False
-    _started_at = None
-    _duration_seconds = 0.0
+def _stop_pump_locked(pump: dict):
+    pump["device"].off()
+    pump["is_running"] = False
+    pump["started_at"] = None
+    pump["duration_seconds"] = 0.0
 
 
-def _run_for_duration(duration_seconds: float, token: int):
+def _run_for_duration(pump_id: int, duration_seconds: float, token: int):
     try:
         time.sleep(duration_seconds)
     finally:
         with _lock:
-            if token == _run_token:
-                _stop_locked()
+            pump = _get_pump_locked(pump_id)
+            if token == pump["run_token"]:
+                _stop_pump_locked(pump)
 
 
-def dispense_fertilizer(duration_seconds: float):
-    global _is_running
-    global _started_at
-    global _duration_seconds
-    global _worker
-    global _run_token
+def _start_pump_locked(pump: dict, duration_seconds: float):
+    if pump["is_running"]:
+        raise ValueError(f"fertilizer pump {pump['id']} is already running")
 
+    pump["device"].on()
+    pump["is_running"] = True
+    pump["started_at"] = time.time()
+    pump["duration_seconds"] = duration_seconds
+    pump["run_token"] += 1
+    token = pump["run_token"]
+    pump["worker"] = threading.Thread(
+        target=_run_for_duration,
+        args=(pump["id"], duration_seconds, token),
+        daemon=True,
+    )
+    pump["worker"].start()
+    return _build_pump_status(pump)
+
+
+def run_fertilizer_pump(pump_id: int, duration_seconds: float):
     duration_seconds = float(duration_seconds)
-
     if duration_seconds <= 0:
         raise ValueError("duration_seconds must be greater than 0")
 
     with _lock:
-        if _is_running:
-            raise ValueError("fertilizer pumps are already running")
+        pump = _get_pump_locked(int(pump_id))
+        return _start_pump_locked(pump, duration_seconds)
 
+
+def stop_fertilizer_pump(pump_id: int):
+    with _lock:
+        pump = _get_pump_locked(int(pump_id))
+        pump["run_token"] += 1
+        _stop_pump_locked(pump)
+        return _build_pump_status(pump)
+
+
+def run_all_fertilizer_pumps(duration_seconds: float):
+    duration_seconds = float(duration_seconds)
+    if duration_seconds <= 0:
+        raise ValueError("duration_seconds must be greater than 0")
+
+    with _lock:
         _ensure_initialized()
-        _set_all_devices(True)
-        _is_running = True
-        _started_at = time.time()
-        _duration_seconds = duration_seconds
-        _run_token += 1
-        token = _run_token
-        _worker = threading.Thread(
-            target=_run_for_duration,
-            args=(duration_seconds, token),
-            daemon=True,
-        )
-        _worker.start()
+        for pump in _pumps:
+            if pump["is_running"]:
+                raise ValueError(
+                    f"fertilizer pump {pump['id']} is already running"
+                )
+
+        for pump in _pumps:
+            _start_pump_locked(pump, duration_seconds)
+
         return _build_status()
 
 
-def stop_pump_fertilizer():
-    global _is_running
-    global _started_at
-    global _duration_seconds
-    global _run_token
-
+def stop_all_fertilizer_pumps():
     with _lock:
-        _run_token += 1
-        _stop_locked()
+        if not _pumps:
+            return _build_status()
+
+        for pump in _pumps:
+            pump["run_token"] += 1
+            _stop_pump_locked(pump)
+
         return _build_status()
 
 
 def get_pump_fertilizer_status():
     with _lock:
+        _ensure_initialized()
         return _build_status()
 
 
-atexit.register(stop_pump_fertilizer)
+atexit.register(stop_all_fertilizer_pumps)

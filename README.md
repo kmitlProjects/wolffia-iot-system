@@ -5,7 +5,7 @@ IoT monitoring system for a Wolffia pond running on Raspberry Pi.
 ## Main Components
 
 - `api/`: FastAPI service for dashboard, sensor APIs, and background logging
-- `dashboard/`: simple HTML dashboard
+- `frontend/`: mobile-friendly TypeScript dashboard source and checked-in dist assets
 - `mqtt/`: MQTT publisher/subscriber for sensor data flow
 - `sensors/`: hardware integration for temperature, pH, and camera
 - `test/`: quick hardware test scripts
@@ -50,9 +50,26 @@ The dashboard is fully web-based and includes the live USB camera feed.
 3. Set `LIGHT_ACTIVE_LOW=true` if your relay board is low-trigger, or `false` if it is high-trigger.
 4. Start the stack with `./start.sh`.
 5. Open `http://<raspberry-pi-ip>:8000`.
-6. The live camera feed is served directly from `http://<raspberry-pi-ip>:8000/video`.
-7. Light, water pump, and fertilizer pumps can be controlled from the dashboard.
-8. If your fertilizer relays must switch together, set `PUMP_FERTILIZER_PINS` in `.env`, for example `5,6,13`.
+6. The new mobile-first dashboard is served from the checked-in `frontend/dist` assets.
+7. The live camera feed is served directly from `http://<raspberry-pi-ip>:8000/video`.
+8. Light, water pump, and fertilizer pumps can be controlled from the dashboard.
+9. If you have multiple fertilizer pumps, set `PUMP_FERTILIZER_PINS` in `.env`, for example `5,6,13`.
+10. Each fertilizer pump can be controlled separately from the web dashboard.
+11. Light and water pump support optional automation schedules from the web dashboard.
+12. The frontend now reads a single `/dashboard-state` endpoint for most data to reduce request volume.
+
+## Frontend Development
+
+- Source files live in `frontend/src`.
+- Runtime assets served by FastAPI live in `frontend/dist`.
+- This repository checks in `frontend/dist` so the dashboard still works on devices without Node.js installed.
+- If you later install Node.js, you can rebuild the frontend with:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
 
 ## Environment Variables
 
@@ -71,6 +88,9 @@ The dashboard is fully web-based and includes the live USB camera feed.
 - `PUMP_WATER_ACTIVE_LOW`
 - `PUMP_FERTILIZER_PINS`
 - `PUMP_FERTILIZER_ACTIVE_LOW`
+- `AUTOMATION_COLLECTION`
+- `AUTOMATION_POLL_SECONDS`
+- `APP_TIMEZONE`
 - `CORS_ALLOW_ORIGINS`
 
 ## Notes

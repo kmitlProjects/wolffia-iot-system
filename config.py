@@ -78,6 +78,9 @@ PUMP_FERTILIZER_PINS = get_int_list_env(
     [get_int_env("PUMP_FERTILIZER_PIN", 13)],
 )
 PUMP_FERTILIZER_ACTIVE_LOW = get_bool_env("PUMP_FERTILIZER_ACTIVE_LOW", False)
+AUTOMATION_COLLECTION = os.getenv("AUTOMATION_COLLECTION", "automation_rules")
+AUTOMATION_POLL_SECONDS = get_int_env("AUTOMATION_POLL_SECONDS", 5)
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Bangkok")
 
 CORS_ALLOW_ORIGINS = [
     origin.strip()

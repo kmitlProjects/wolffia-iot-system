@@ -13,3 +13,5 @@ __pycache__/
 .vscode/
 .idea/
 .lgd-nfy*
+frontend/node_modules/
+frontend/.tsbuildinfo
