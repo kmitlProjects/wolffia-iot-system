@@ -2,10 +2,14 @@ import {
     createLightSchedule,
     createPumpWaterSchedule,
     deleteAutomationRule,
+    fetchDailySummaryHistory,
     fetchDashboardState,
+    fetchSensorHistory,
+    harvestGrowCycle,
     setAutomationRuleEnabled,
     startAllFertilizerPumps,
     startFertilizerPump,
+    startGrowCycle,
     startWaterPump,
     stopAllFertilizerPumps,
     stopFertilizerPump,
@@ -13,10 +17,13 @@ import {
     turnLight,
 } from "./api.js"
 import type {
+    DailySummary,
     DashboardState,
     FertilizerPumpStatus,
+    ImageAnalysis,
     LightRule,
     PumpWaterRule,
+    SensorReading,
 } from "./types.js"
 
 const DAY_OPTIONS = [
@@ -29,11 +36,13 @@ const DAY_OPTIONS = [
     ["sun", "Sun"],
 ] as const
 
-const POLL_VISIBLE_MS = 4000
-const POLL_HIDDEN_MS = 15000
+const POLL_VISIBLE_MS = 30000
+const POLL_HIDDEN_MS = 30000
 const DEFAULT_PUMP_DURATION = "5"
 
 let dashboardState: DashboardState | null = null
+let sensorHistory: SensorReading[] = []
+let dailySummaryHistory: DailySummary[] = []
 let pollTimer: number | undefined
 let messageTimer: number | undefined
 let cameraRetryTimer: number | undefined
@@ -129,6 +138,11 @@ function createLayout(): string {
                                 <span class="helper-text">ค่าความเป็นกรดด่าง</span>
                             </article>
                             <article class="metric-card">
+                                <span class="metric-label">Green Coverage</span>
+                                <strong id="sensor-coverage">-</strong>
+                                <span class="helper-text">เปอร์เซ็นต์พื้นที่สีเขียวจาก OpenCV</span>
+                            </article>
+                            <article class="metric-card">
                                 <span class="metric-label">Sensor Timestamp</span>
                                 <strong id="sensor-timestamp">-</strong>
                                 <span class="helper-text">เวลาที่ข้อมูลล่าสุดถูกบันทึก</span>
@@ -150,8 +164,67 @@ function createLayout(): string {
                                 <strong id="fertilizer-summary">-</strong>
                                 <span class="helper-text">ควบคุมแยกเป็นรายหัวปั๊ม</span>
                             </article>
+                            <article class="summary-card">
+                                <span class="card-label">Grow Cycle</span>
+                                <strong id="grow-cycle-status-chip">-</strong>
+                                <span id="grow-cycle-copy" class="helper-text">-</span>
+                            </article>
+                        </div>
+                        <div class="actions">
+                            <button id="cycle-start-button" class="button-primary" type="button">
+                                เริ่มปลูก
+                            </button>
+                            <button id="cycle-harvest-button" class="button-danger" type="button">
+                                สิ้นสุดการปลูก
+                            </button>
                         </div>
                     </div>
+                </section>
+
+                <section class="analytics-grid">
+                    <section class="panel">
+                        <div class="panel-inner">
+                            <div class="panel-title">
+                                <h2>Coverage Time Series</h2>
+                                <p>ดูแนวโน้มย้อนหลังของ temp, pH และ green coverage จากข้อมูลรายชั่วโมง</p>
+                            </div>
+                            <div class="chart-grid">
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>Green Coverage</strong>
+                                        <span id="coverage-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="coverage-chart" class="chart-shell"></div>
+                                </article>
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>Temperature</strong>
+                                        <span id="temp-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="temp-chart" class="chart-shell"></div>
+                                </article>
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>pH</strong>
+                                        <span id="ph-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="ph-chart" class="chart-shell"></div>
+                                </article>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-inner">
+                            <div class="panel-title">
+                                <h2>Daily Summary</h2>
+                                <p>สรุประดับวันพร้อมรูป archive 1 ชุด และประวัติ coverage สำหรับเช็ก trend</p>
+                            </div>
+                            <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
+                            <div id="analysis-image-strip" class="image-strip"></div>
+                            <div id="daily-summary-list" class="history-list"></div>
+                        </div>
+                    </section>
                 </section>
 
                 <section class="control-grid">
@@ -322,6 +395,67 @@ function formatTimestamp(value: string | null | undefined): string {
     }).format(parsed)
 }
 
+function formatTimeOnly(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+        return value
+    }
+
+    return new Intl.DateTimeFormat("th-TH", {
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(parsed)
+}
+
+function formatDateLabel(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    const parsed = value.includes("T")
+        ? new Date(value)
+        : new Date(`${value}T00:00:00`)
+    if (Number.isNaN(parsed.getTime())) {
+        return value
+    }
+
+    return new Intl.DateTimeFormat("th-TH", {
+        month: "short",
+        day: "numeric",
+    }).format(parsed)
+}
+
+function getCycleProgress(cycle: DashboardState["grow_cycle"], referenceAt: string): {
+    dayIndex: number
+    remainingDays: number
+} | null {
+    if (!cycle?.planted_at) {
+        return null
+    }
+
+    const plantedAt = new Date(cycle.planted_at)
+    const referenceTime = new Date(referenceAt)
+    if (Number.isNaN(plantedAt.getTime()) || Number.isNaN(referenceTime.getTime())) {
+        return null
+    }
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000
+    const diffDays = Math.floor(
+        (referenceTime.getTime() - plantedAt.getTime()) / millisecondsPerDay,
+    )
+    const dayIndex = Math.max(diffDays + 1, 1)
+    const targetDays = Number(cycle.target_harvest_days ?? 0)
+    const remainingDays = targetDays > 0
+        ? Math.max(targetDays - dayIndex, 0)
+        : 0
+
+    return { dayIndex, remainingDays }
+}
+
 function formatDays(days: string[]): string {
     return days
         .map((day) => DAY_OPTIONS.find(([value]) => value === day)?.[1] ?? day)
@@ -374,6 +508,236 @@ function readPositiveNumber(inputId: string): number {
         throw new Error("กรุณากรอกตัวเลขที่มากกว่า 0")
     }
     return numericValue
+}
+
+function buildLineChartMarkup(
+    points: Array<{ label: string; value: number | null }>,
+    color: string,
+): string {
+    const validPoints = points
+        .map((point, index) => ({
+            index,
+            label: point.label,
+            value: point.value,
+        }))
+        .filter((point) => point.value !== null && Number.isFinite(point.value))
+
+    if (validPoints.length === 0) {
+        return `<div class="chart-empty">ยังไม่มีข้อมูลสำหรับช่วงเวลานี้</div>`
+    }
+
+    const width = 640
+    const height = 180
+    const paddingX = 18
+    const paddingY = 16
+    const plotWidth = width - paddingX * 2
+    const plotHeight = height - paddingY * 2
+    const values = validPoints.map((point) => Number(point.value))
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+    const range = maxValue - minValue || 1
+
+    const pointLine = validPoints.map((point) => {
+        const x = paddingX + (point.index / Math.max(points.length - 1, 1)) * plotWidth
+        const y = paddingY + ((maxValue - Number(point.value)) / range) * plotHeight
+        return `${x.toFixed(2)},${y.toFixed(2)}`
+    }).join(" ")
+
+    const areaLine = `${paddingX},${height - paddingY} ${pointLine} ${width - paddingX},${height - paddingY}`
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((step) => {
+        const y = paddingY + step * plotHeight
+        return `<line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}" />`
+    }).join("")
+
+    const dots = validPoints.map((point) => {
+        const x = paddingX + (point.index / Math.max(points.length - 1, 1)) * plotWidth
+        const y = paddingY + ((maxValue - Number(point.value)) / range) * plotHeight
+        return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.5" />`
+    }).join("")
+
+    const firstLabel = escapeHtml(validPoints[0].label)
+    const lastLabel = escapeHtml(validPoints[validPoints.length - 1].label)
+
+    return `
+        <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+            <g class="chart-grid-lines">${gridLines}</g>
+            <polygon class="chart-area" points="${areaLine}" style="color: ${color};"></polygon>
+            <polyline class="chart-line" points="${pointLine}" style="color: ${color};"></polyline>
+            <g class="chart-dots" style="color: ${color};">${dots}</g>
+        </svg>
+        <div class="chart-footer">
+            <span>${firstLabel}</span>
+            <span>${lastLabel}</span>
+        </div>
+    `
+}
+
+function renderSensorChart(
+    containerId: string,
+    metaId: string,
+    points: Array<{ label: string; value: number | null }>,
+    color: string,
+    digits: number,
+    suffix: string,
+): void {
+    $(containerId).innerHTML = buildLineChartMarkup(points, color)
+
+    const validValues = points
+        .map((point) => point.value)
+        .filter((value): value is number => value !== null && Number.isFinite(value))
+
+    if (validValues.length === 0) {
+        $(metaId).textContent = "ยังไม่มีข้อมูล"
+        return
+    }
+
+    const latestValue = validValues[validValues.length - 1]
+    const minValue = Math.min(...validValues)
+    const maxValue = Math.max(...validValues)
+    $(metaId).textContent =
+        `ล่าสุด ${formatNumber(latestValue, digits)}${suffix} • ` +
+        `ต่ำสุด ${formatNumber(minValue, digits)} • สูงสุด ${formatNumber(maxValue, digits)}`
+}
+
+function renderSensorCharts(items: SensorReading[]): void {
+    const recent = items.slice(-48)
+    renderSensorChart(
+        "coverage-chart",
+        "coverage-chart-meta",
+        recent.map((item) => ({
+            label: formatTimeOnly(item.timestamp),
+            value: item.green_coverage_percent ?? null,
+        })),
+        "#12806a",
+        2,
+        "%",
+    )
+    renderSensorChart(
+        "temp-chart",
+        "temp-chart-meta",
+        recent.map((item) => ({
+            label: formatTimeOnly(item.timestamp),
+            value: item.temp ?? null,
+        })),
+        "#cf4e42",
+        1,
+        "C",
+    )
+    renderSensorChart(
+        "ph-chart",
+        "ph-chart-meta",
+        recent.map((item) => ({
+            label: formatTimeOnly(item.timestamp),
+            value: item.ph ?? null,
+        })),
+        "#f29b38",
+        2,
+        "",
+    )
+}
+
+function renderDailySummarySection(
+    latestSummary: DailySummary | null,
+    latestImage: ImageAnalysis | null,
+    summaries: DailySummary[],
+): void {
+    const summaryContainer = $("daily-summary-highlights")
+    if (!latestSummary) {
+        summaryContainer.innerHTML = `
+            <div class="summary-card">
+                <span class="card-label">Daily Summary</span>
+                <strong>-</strong>
+                <span class="helper-text">ยังไม่มีข้อมูลสรุปรายวัน</span>
+            </div>
+        `
+    } else {
+        summaryContainer.innerHTML = `
+            <article class="summary-card">
+                <span class="card-label">Latest Day</span>
+                <strong>${escapeHtml(latestSummary.date)}</strong>
+                <span class="helper-text">${latestSummary.sensor_count ?? 0} hourly points</span>
+            </article>
+            <article class="summary-card">
+                <span class="card-label">Coverage Avg</span>
+                <strong>${formatNumber(latestSummary.green_coverage_avg, 2)} %</strong>
+                <span class="helper-text">
+                    min ${formatNumber(latestSummary.green_coverage_min, 2)} •
+                    max ${formatNumber(latestSummary.green_coverage_max, 2)}
+                </span>
+            </article>
+            <article class="summary-card">
+                <span class="card-label">Temp / pH Avg</span>
+                <strong>${formatNumber(latestSummary.temp_avg, 1)} °C</strong>
+                <span class="helper-text">pH ${formatNumber(latestSummary.ph_avg, 2)}</span>
+            </article>
+        `
+    }
+
+    const imageStrip = $("analysis-image-strip")
+    const rawUrl = latestImage?.image_url ?? latestSummary?.image_url ?? null
+    const maskUrl = latestImage?.mask_url ?? latestSummary?.mask_url ?? null
+    const overlayUrl = latestImage?.overlay_url ?? latestSummary?.overlay_url ?? null
+    const imageTiles = [
+        ["Raw Archive", rawUrl],
+        ["Green Mask", maskUrl],
+        ["Overlay", overlayUrl],
+    ].filter(([, url]) => Boolean(url))
+
+    if (imageTiles.length === 0) {
+        imageStrip.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีรูป archive ของวันล่าสุด</div>`
+    } else {
+        imageStrip.innerHTML = imageTiles.map(([label, url]) => `
+            <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
+                <img alt="${escapeHtml(label)}" loading="lazy" src="${escapeHtml(url ?? "")}">
+                <span>${escapeHtml(label)}</span>
+            </a>
+        `).join("")
+    }
+
+    const listContainer = $("daily-summary-list")
+    if (summaries.length === 0) {
+        listContainer.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีประวัติ daily summary</div>`
+        return
+    }
+
+    listContainer.innerHTML = summaries.map((summary) => `
+        <article class="history-card">
+            <div class="rule-title">
+                <div>
+                    <strong>${escapeHtml(summary.date)}</strong>
+                    <div class="rule-meta">
+                        ${summary.sensor_count ?? 0} hourly points •
+                        coverage avg ${formatNumber(summary.green_coverage_avg, 2)}%
+                    </div>
+                </div>
+                <span class="mini-chip ${summary.coverage_count ? "active" : "danger"}">
+                    ${summary.coverage_count ?? 0} coverage points
+                </span>
+            </div>
+            <div class="history-metrics">
+                <span>Temp ${formatNumber(summary.temp_avg, 1)} °C</span>
+                <span>pH ${formatNumber(summary.ph_avg, 2)}</span>
+                <span>Coverage max ${formatNumber(summary.green_coverage_max, 2)}%</span>
+            </div>
+            <div class="history-links">
+                ${
+                    summary.image_url
+                        ? `<a class="hero-link" href="${escapeHtml(summary.image_url)}" target="_blank" rel="noreferrer">raw</a>`
+                        : ""
+                }
+                ${
+                    summary.mask_url
+                        ? `<a class="hero-link" href="${escapeHtml(summary.mask_url)}" target="_blank" rel="noreferrer">mask</a>`
+                        : ""
+                }
+                ${
+                    summary.overlay_url
+                        ? `<a class="hero-link" href="${escapeHtml(summary.overlay_url)}" target="_blank" rel="noreferrer">overlay</a>`
+                        : ""
+                }
+            </div>
+        </article>
+    `).join("")
 }
 
 function renderLightRules(rules: LightRule[]): void {
@@ -566,12 +930,15 @@ function renderDashboard(state: DashboardState): void {
     const light = state.actuators.light
     const waterPump = state.actuators.pump_water
     const fertilizer = state.actuators.pump_fertilizer
+    const cycle = state.grow_cycle
+    const cycleProgress = getCycleProgress(cycle, state.meta.generated_at)
 
     $("timezone-chip").textContent = `TZ: ${state.meta.timezone}`
     $("generated-at").textContent = formatTimestamp(state.meta.generated_at)
 
     $("sensor-temp").textContent = `${formatNumber(sensor?.temp)} °C`
     $("sensor-ph").textContent = formatNumber(sensor?.ph, 2)
+    $("sensor-coverage").textContent = `${formatNumber(sensor?.green_coverage_percent, 2)} %`
     $("sensor-timestamp").textContent = formatTimestamp(sensor?.timestamp)
 
     $("light-status-chip").textContent = light.is_on ? "ON" : "OFF"
@@ -587,10 +954,18 @@ function renderDashboard(state: DashboardState): void {
         : `GPIO ${waterPump.pin} • waiting for manual or scheduled run`
 
     $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
+    $("grow-cycle-status-chip").textContent = cycleProgress
+        ? `DAY ${cycleProgress.dayIndex}/${cycle?.target_harvest_days ?? "-"}`
+        : "IDLE"
+    $("grow-cycle-copy").textContent = cycleProgress
+        ? `${cycle?.name || cycle?.cycle_id || "active cycle"} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
+        : "ยังไม่มีรอบปลูก active อยู่"
 
     renderLightRules(state.automation.light)
     renderPumpWaterRules(state.automation.pump_water)
     renderFertilizerPumps(fertilizer.pumps)
+    renderSensorCharts(sensorHistory)
+    renderDailySummarySection(state.daily_summary, state.image_analysis, dailySummaryHistory)
 
     if (!cameraLoaded && state.camera.status.last_error) {
         $("camera-overlay").classList.remove("hidden")
@@ -614,8 +989,14 @@ function queueRefresh(): void {
 
 async function refreshDashboard(silent = false): Promise<void> {
     try {
-        const state = await fetchDashboardState()
+        const [state, sensorHistoryResponse, dailySummaryResponse] = await Promise.all([
+            fetchDashboardState(),
+            fetchSensorHistory(48),
+            fetchDailySummaryHistory(14),
+        ])
         dashboardState = state
+        sensorHistory = sensorHistoryResponse.items
+        dailySummaryHistory = dailySummaryResponse.items
         renderDashboard(state)
         setConnectionStatus(true, document.hidden ? "พักการ sync บางส่วน" : "Live sync")
     } catch (error) {
@@ -734,6 +1115,18 @@ function bindEvents(): void {
     $("fertilizer-start-all-button").addEventListener("click", async () => {
         await runAction("All fertilizer pumps started", async () => {
             await startAllFertilizerPumps(readPositiveNumber("fertilizer-all-duration"))
+        })
+    })
+
+    $("cycle-start-button").addEventListener("click", async () => {
+        await runAction("เริ่มรอบปลูกแล้ว", async () => {
+            await startGrowCycle()
+        })
+    })
+
+    $("cycle-harvest-button").addEventListener("click", async () => {
+        await runAction("สิ้นสุดรอบปลูกแล้ว", async () => {
+            await harvestGrowCycle()
         })
     })
 

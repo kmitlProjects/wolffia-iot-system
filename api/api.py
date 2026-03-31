@@ -1,6 +1,19 @@
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
+from ai.daily_summary import ensure_daily_summary_indexes, summarize_day
+from ai.feature_builder import build_harvest_feature_bundle
+from ai.predictions import (
+    HARVEST_PREDICTION_TYPE,
+    assess_harvest_prediction_readiness,
+    build_stub_prediction_run,
+    ensure_prediction_indexes,
+    get_latest_prediction_run,
+    list_prediction_runs,
+    store_prediction_run,
+)
+from automation.daily_capture import DailyImageScheduler
 from automation.scheduler import AutomationScheduler
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +21,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pymongo import MongoClient
+from grow_cycle import (
+    ensure_grow_cycle_indexes,
+    get_active_cycle,
+    harvest_active_cycle,
+    list_cycles,
+    start_cycle,
+)
 
 from actuators.ligth import get_light_status, light_off, light_on
 from actuators.pump_fertilizer_control import (
@@ -27,9 +47,21 @@ from config import (
     AUTOMATION_COLLECTION,
     AUTOMATION_POLL_SECONDS,
     CORS_ALLOW_ORIGINS,
+    DAILY_SUMMARY_COLLECTION,
+    DEFAULT_GROW_CYCLE_DAYS,
+    DEBUG_OUTPUT_DIR,
+    GROW_CYCLE_COLLECTION,
+    IMAGE_ANALYSIS_COLLECTION,
+    IMAGE_OUTPUT_DIR,
     MONGO_COLLECTION,
     MONGO_DB,
     MONGO_URI,
+    PREDICTION_COLLECTION,
+    PREDICTION_LOOKBACK_DAYS,
+    PREDICTION_SENSOR_LIMIT,
+    SNAPSHOT_POLL_SECONDS,
+    SNAPSHOT_TIME,
+    SNAPSHOT_TIMEOUT_SECONDS,
 )
 from camera.camera import gen_frames, get_camera_status
 
@@ -37,6 +69,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 FRONTEND_INDEX_PATH = os.path.join(FRONTEND_DIST_DIR, "index.html")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
+os.makedirs(DATA_DIR, exist_ok=True)
 
 app = FastAPI()
 
@@ -53,15 +88,35 @@ app.mount(
     StaticFiles(directory=FRONTEND_ASSETS_DIR),
     name="frontend-assets",
 )
+app.mount("/data", StaticFiles(directory=DATA_DIR), name="analysis-data")
 
-mongo = MongoClient(MONGO_URI)
+mongo = MongoClient(MONGO_URI, tz_aware=True)
 db = mongo[MONGO_DB]
 collection = db[MONGO_COLLECTION]
+image_analysis_collection = db[IMAGE_ANALYSIS_COLLECTION]
+daily_summary_collection = db[DAILY_SUMMARY_COLLECTION]
+grow_cycle_collection = db[GROW_CYCLE_COLLECTION]
+prediction_collection = db[PREDICTION_COLLECTION]
 automation_collection = db[AUTOMATION_COLLECTION]
+ensure_daily_summary_indexes(daily_summary_collection)
+ensure_grow_cycle_indexes(grow_cycle_collection)
+ensure_prediction_indexes(prediction_collection)
 automation_scheduler = AutomationScheduler(
     automation_collection,
     APP_TIMEZONE,
     AUTOMATION_POLL_SECONDS,
+)
+daily_image_scheduler = DailyImageScheduler(
+    image_analysis_collection,
+    collection,
+    daily_summary_collection,
+    grow_cycle_collection,
+    APP_TIMEZONE,
+    SNAPSHOT_TIME,
+    SNAPSHOT_POLL_SECONDS,
+    IMAGE_OUTPUT_DIR,
+    DEBUG_OUTPUT_DIR,
+    SNAPSHOT_TIMEOUT_SECONDS,
 )
 
 
@@ -92,6 +147,23 @@ class AutomationRuleEnabledRequest(BaseModel):
     enabled: bool
 
 
+class GrowCycleStartRequest(BaseModel):
+    name: str | None = None
+    planted_at: str | None = None
+    target_harvest_days: int = DEFAULT_GROW_CYCLE_DAYS
+    notes: str | None = None
+
+
+class GrowCycleHarvestRequest(BaseModel):
+    harvested_at: str | None = None
+    notes: str | None = None
+
+
+class HarvestPredictionRequest(BaseModel):
+    lookback_days: int = PREDICTION_LOOKBACK_DAYS
+    sensor_limit: int = PREDICTION_SENSOR_LIMIT
+
+
 def serialize_document(document):
     if document is None:
         return None
@@ -102,7 +174,48 @@ def serialize_document(document):
 
 
 def get_latest_document():
-    return collection.find_one(sort=[("timestamp", -1)])
+    return collection.find_one(sort=[("_id", -1)])
+
+
+def get_latest_image_analysis():
+    return daily_image_scheduler.get_latest_analysis()
+
+
+def get_latest_daily_summary():
+    return daily_summary_collection.find_one(sort=[("date", -1)])
+
+
+def get_active_grow_cycle():
+    return get_active_cycle(grow_cycle_collection, timezone_name=APP_TIMEZONE)
+
+
+def get_latest_prediction_document():
+    return get_latest_prediction_run(prediction_collection)
+
+
+def get_grow_cycle_history(limit: int = 20):
+    safe_limit = max(min(int(limit), 120), 1)
+    return [serialize_document(item) for item in list_cycles(grow_cycle_collection, safe_limit)]
+
+
+def get_prediction_history(limit: int = 20):
+    safe_limit = max(min(int(limit), 120), 1)
+    return [
+        serialize_document(item)
+        for item in list_prediction_runs(prediction_collection, limit=safe_limit)
+    ]
+
+
+def get_sensor_history(limit: int = 48):
+    safe_limit = max(min(int(limit), 240), 1)
+    data = list(collection.find().sort([("_id", -1)]).limit(safe_limit))
+    return [serialize_document(item) for item in reversed(data)]
+
+
+def get_daily_summary_history(limit: int = 14):
+    safe_limit = max(min(int(limit), 90), 1)
+    data = list(daily_summary_collection.find().sort([("date", -1)]).limit(safe_limit))
+    return [serialize_document(item) for item in data]
 
 
 def get_actuator_status():
@@ -139,6 +252,10 @@ def get_dashboard_state():
             "status": get_camera_status(),
         },
         "sensor": serialize_document(get_latest_document()),
+        "image_analysis": serialize_document(get_latest_image_analysis()),
+        "daily_summary": serialize_document(get_latest_daily_summary()),
+        "grow_cycle": serialize_document(get_active_grow_cycle()),
+        "prediction_latest": serialize_document(get_latest_prediction_document()),
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
     }
@@ -149,14 +266,25 @@ def startup_event():
     print("API จะอ่านค่าล่าสุดจาก MongoDB โดยไม่จับ hardware โดยตรง")
     print("dashboard ใหม่จะถูกเสิร์ฟผ่านหน้าเว็บที่ /")
     print("กล้องจะถูกสตรีมผ่านหน้าเว็บที่ /video")
+    print("snapshot รายวันและ green coverage พร้อมใช้งานแล้ว")
+    print("ไฟล์ raw/mask/overlay เปิดดูได้ผ่าน /data/*")
     print("actuator controls พร้อมใช้งานที่ /actuators/*")
     print("automation schedule พร้อมใช้งานที่ /automation/*")
     automation_scheduler.start()
+    daily_image_scheduler.start()
+    summarize_day(
+        collection,
+        image_analysis_collection,
+        daily_summary_collection,
+        APP_TIMEZONE,
+        datetime.now(ZoneInfo(APP_TIMEZONE)).strftime("%Y-%m-%d"),
+    )
 
 
 @app.on_event("shutdown")
 def shutdown_event():
     automation_scheduler.stop()
+    daily_image_scheduler.stop()
 
 # ----------------- API Endpoints -----------------
 
@@ -179,13 +307,8 @@ def get_latest():
     return [latest]
 
 @app.get("/history")
-def get_history():
-    data = collection.find().sort("timestamp", 1).limit(50)
-    result = []
-    for item in data:
-        item["_id"] = str(item["_id"])
-        result.append(item)
-    return result
+def get_history(limit: int = 50):
+    return get_sensor_history(limit)
 
 @app.get("/temperature")
 def get_temperature():
@@ -199,6 +322,155 @@ def actuator_status():
 @app.get("/dashboard-state")
 def dashboard_state():
     return get_dashboard_state()
+
+@app.get("/image-analysis/latest")
+def latest_image_analysis():
+    return {"image_analysis": serialize_document(get_latest_image_analysis())}
+
+
+@app.get("/daily-summary/latest")
+def latest_daily_summary():
+    return {"daily_summary": serialize_document(get_latest_daily_summary())}
+
+
+@app.get("/daily-summary/history")
+def daily_summary_history(limit: int = 14):
+    return {"items": get_daily_summary_history(limit)}
+
+
+@app.post("/daily-summary/rebuild")
+def rebuild_daily_summary(date: str | None = None):
+    target_date = date or datetime.now(ZoneInfo(APP_TIMEZONE)).strftime("%Y-%m-%d")
+    document = summarize_day(
+        collection,
+        image_analysis_collection,
+        daily_summary_collection,
+        APP_TIMEZONE,
+        target_date,
+    )
+    return {"daily_summary": serialize_document(document)}
+
+
+@app.get("/sensor-history")
+def sensor_history(limit: int = 48):
+    return {"items": get_sensor_history(limit)}
+
+@app.get("/image-analysis/debug/latest")
+def latest_image_analysis_debug():
+    return {"debug": daily_image_scheduler.get_latest_debug_info()}
+
+@app.post("/image-analysis/analyze-now")
+def analyze_image_now():
+    try:
+        result = daily_image_scheduler.analyze_now()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"analysis": result}
+
+@app.post("/image-analysis/capture-now")
+def capture_image_now():
+    try:
+        document = daily_image_scheduler.capture_now()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"image_analysis": serialize_document(document)}
+
+
+@app.get("/grow-cycles/active")
+def active_grow_cycle():
+    return {"grow_cycle": serialize_document(get_active_grow_cycle())}
+
+
+@app.get("/grow-cycles/history")
+def grow_cycle_history(limit: int = 20):
+    return {"items": get_grow_cycle_history(limit)}
+
+
+@app.get("/predictions/latest")
+def latest_prediction():
+    return {"prediction": serialize_document(get_latest_prediction_document())}
+
+
+@app.get("/predictions/history")
+def prediction_history(limit: int = 20):
+    return {"items": get_prediction_history(limit)}
+
+
+@app.post("/predictions/harvest/preview")
+def preview_harvest_prediction(payload: HarvestPredictionRequest):
+    try:
+        feature_bundle = build_harvest_feature_bundle(
+            collection,
+            daily_summary_collection,
+            image_analysis_collection,
+            grow_cycle_collection,
+            APP_TIMEZONE,
+            lookback_days=payload.lookback_days,
+            sensor_limit=payload.sensor_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    readiness = assess_harvest_prediction_readiness(feature_bundle)
+    return {
+        "prediction_type": HARVEST_PREDICTION_TYPE,
+        "readiness": readiness,
+        "feature_bundle": feature_bundle,
+    }
+
+
+@app.post("/predictions/harvest/stub")
+def create_harvest_prediction_stub(payload: HarvestPredictionRequest):
+    try:
+        feature_bundle = build_harvest_feature_bundle(
+            collection,
+            daily_summary_collection,
+            image_analysis_collection,
+            grow_cycle_collection,
+            APP_TIMEZONE,
+            lookback_days=payload.lookback_days,
+            sensor_limit=payload.sensor_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    document = build_stub_prediction_run(feature_bundle)
+    stored_document = store_prediction_run(prediction_collection, document)
+    return {"prediction": serialize_document(stored_document)}
+
+
+@app.post("/grow-cycles/start")
+def start_grow_cycle(payload: GrowCycleStartRequest):
+    try:
+        document = start_cycle(
+            grow_cycle_collection,
+            APP_TIMEZONE,
+            name=payload.name,
+            planted_at=payload.planted_at,
+            target_harvest_days=payload.target_harvest_days,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"grow_cycle": serialize_document(document)}
+
+
+@app.post("/grow-cycles/harvest")
+def harvest_grow_cycle(payload: GrowCycleHarvestRequest):
+    try:
+        document = harvest_active_cycle(
+            grow_cycle_collection,
+            APP_TIMEZONE,
+            harvested_at=payload.harvested_at,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"grow_cycle": serialize_document(document)}
 
 @app.get("/automation/rules")
 def automation_rules():

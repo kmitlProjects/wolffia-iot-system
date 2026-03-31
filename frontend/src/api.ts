@@ -1,7 +1,9 @@
 import type {
+    DailySummary,
     DashboardState,
     LightSchedulePayload,
     PumpWaterSchedulePayload,
+    SensorReading,
 } from "./types.js"
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -31,6 +33,28 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function fetchDashboardState(): Promise<DashboardState> {
     return requestJson<DashboardState>("/dashboard-state")
+}
+
+export function fetchSensorHistory(limit = 48): Promise<{ items: SensorReading[] }> {
+    return requestJson(`/sensor-history?limit=${limit}`)
+}
+
+export function fetchDailySummaryHistory(limit = 14): Promise<{ items: DailySummary[] }> {
+    return requestJson(`/daily-summary/history?limit=${limit}`)
+}
+
+export function startGrowCycle(): Promise<{ grow_cycle: unknown }> {
+    return requestJson("/grow-cycles/start", {
+        method: "POST",
+        body: JSON.stringify({}),
+    })
+}
+
+export function harvestGrowCycle(): Promise<{ grow_cycle: unknown }> {
+    return requestJson("/grow-cycles/harvest", {
+        method: "POST",
+        body: JSON.stringify({}),
+    })
 }
 
 export function turnLight(action: "on" | "off"): Promise<{ light: unknown }> {

@@ -127,6 +127,32 @@ def get_camera_status():
     }
 
 
+def get_latest_frame_bytes(timeout_seconds: float = 5.0, max_age_seconds: float = 2.0):
+    _ensure_capture_thread()
+    deadline = time.monotonic() + max(float(timeout_seconds), 0.1)
+
+    while True:
+        with _frame_condition:
+            frame = _latest_frame
+            last_frame_at = _last_frame_at
+
+            if (
+                frame is not None
+                and last_frame_at is not None
+                and (time.time() - last_frame_at) <= max_age_seconds
+            ):
+                return frame
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            _frame_condition.wait(timeout=min(remaining, 0.5))
+
+    _set_camera_error("camera snapshot timed out")
+    return None
+
+
 def gen_frames():
     _ensure_capture_thread()
     last_seen_sequence = -1

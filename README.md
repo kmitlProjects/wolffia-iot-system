@@ -5,6 +5,7 @@ IoT monitoring system for a Wolffia pond running on Raspberry Pi.
 ## Main Components
 
 - `api/`: FastAPI service for dashboard, sensor APIs, and background logging
+- `ai/`: growth dataset tools, daily summaries, and prediction-ready feature builders
 - `frontend/`: mobile-friendly TypeScript dashboard source and checked-in dist assets
 - `mqtt/`: MQTT publisher/subscriber for sensor data flow
 - `sensors/`: hardware integration for temperature, pH, and camera
@@ -40,6 +41,12 @@ cp .env.example .env
 ```
 
 6. Open `http://<raspberry-pi-ip>:8000`
+7. Stop or restart the stack when needed:
+
+```bash
+./stop.sh
+./restart.sh
+```
 
 ## Web Dashboard
 
@@ -57,6 +64,21 @@ The dashboard is fully web-based and includes the live USB camera feed.
 10. Each fertilizer pump can be controlled separately from the web dashboard.
 11. Light and water pump support optional automation schedules from the web dashboard.
 12. The frontend now reads a single `/dashboard-state` endpoint for most data to reduce request volume.
+
+## Prediction Readiness
+
+- `sensor_data` stores raw time-series points with `timestamp`, `temp`, `ph`, and `green_coverage_percent`.
+- `daily_image_analysis` stores one archived image-analysis document per day with green coverage and debug asset URLs.
+- `daily_summary` aggregates each local day into model-friendly features such as `temp_avg`, `ph_avg`, `green_coverage_avg`, and cycle context.
+- `grow_cycles` stores planting/harvest boundaries so labels and future predictions stay attached to the correct cycle.
+- `prediction_runs` stores preview and stub inference runs so the backend contract is ready before an actual ML model is added.
+
+Prediction endpoints:
+
+- `POST /predictions/harvest/preview`
+- `POST /predictions/harvest/stub`
+- `GET /predictions/latest`
+- `GET /predictions/history`
 
 ## Frontend Development
 
@@ -76,12 +98,31 @@ npm run build
 - `MONGO_URI`
 - `MONGO_DB`
 - `MONGO_COLLECTION`
+- `IMAGE_ANALYSIS_COLLECTION`
+- `DAILY_SUMMARY_COLLECTION`
+- `GROW_CYCLE_COLLECTION`
+- `PREDICTION_COLLECTION`
 - `MQTT_BROKER`
 - `MQTT_PORT`
 - `MQTT_TOPIC`
 - `MQTT_USERNAME`
 - `MQTT_PASSWORD`
+- `SENSOR_INTERVAL_SECONDS`
+- `LOCAL_API_BASE_URL`
+- `IMAGE_ANALYSIS_REQUEST_TIMEOUT_SECONDS`
 - `CAMERA_DEVICE`
+- `IMAGE_OUTPUT_DIR`
+- `SNAPSHOT_TIME`
+- `SNAPSHOT_POLL_SECONDS`
+- `SNAPSHOT_TIMEOUT_SECONDS`
+- `COVERAGE_H_MIN`
+- `COVERAGE_H_MAX`
+- `COVERAGE_S_MIN`
+- `COVERAGE_V_MIN`
+- `COVERAGE_ROI_X`
+- `COVERAGE_ROI_Y`
+- `COVERAGE_ROI_WIDTH`
+- `COVERAGE_ROI_HEIGHT`
 - `LIGHT_PIN`
 - `LIGHT_ACTIVE_LOW`
 - `PUMP_WATER_PIN`
@@ -91,6 +132,9 @@ npm run build
 - `AUTOMATION_COLLECTION`
 - `AUTOMATION_POLL_SECONDS`
 - `APP_TIMEZONE`
+- `DEFAULT_GROW_CYCLE_DAYS`
+- `PREDICTION_LOOKBACK_DAYS`
+- `PREDICTION_SENSOR_LIMIT`
 - `CORS_ALLOW_ORIGINS`
 
 ## Notes

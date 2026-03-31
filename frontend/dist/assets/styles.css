@@ -274,22 +274,120 @@ label {
 }
 
 .metric-grid,
+.analytics-grid,
+.chart-grid,
 .control-grid,
 .schedule-grid,
 .fertilizer-grid,
-.summary-grid {
+.summary-grid,
+.daily-highlight-grid,
+.history-list,
+.image-strip {
     display: grid;
     gap: 0.85rem;
 }
 
 .metric-card,
+.chart-card,
 .rule-card,
 .pump-card,
-.summary-card {
+.summary-card,
+.history-card {
     padding: 1rem;
     border-radius: var(--radius-md);
     background: var(--surface-strong);
     border: 1px solid var(--line);
+}
+
+.chart-card {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.chart-head,
+.history-metrics,
+.history-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.65rem;
+    align-items: center;
+}
+
+.chart-shell {
+    min-height: 220px;
+    padding: 0.75rem;
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(18, 128, 106, 0.08), rgba(18, 128, 106, 0.02)),
+        #fcfcf7;
+    border: 1px solid rgba(18, 128, 106, 0.1);
+}
+
+.chart-empty {
+    display: grid;
+    place-items: center;
+    min-height: 180px;
+    color: var(--muted);
+    text-align: center;
+}
+
+.chart-svg {
+    width: 100%;
+    height: 180px;
+    display: block;
+}
+
+.chart-grid-lines line {
+    stroke: rgba(24, 48, 44, 0.12);
+    stroke-width: 1;
+}
+
+.chart-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chart-area {
+    fill: currentColor;
+    opacity: 0.12;
+}
+
+.chart-dots circle {
+    fill: currentColor;
+}
+
+.chart-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.55rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.image-tile {
+    display: grid;
+    gap: 0.55rem;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.image-tile img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: #16302c;
+}
+
+.image-tile span {
+    font-weight: 700;
+    text-align: center;
 }
 
 .metric-card strong,
@@ -523,6 +621,14 @@ label {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .daily-highlight-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .image-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .fertilizer-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -545,6 +651,11 @@ label {
     .control-grid {
         grid-column: 1 / -1;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .analytics-grid {
+        grid-column: 1 / -1;
+        grid-template-columns: 1.15fr 0.85fr;
     }
 
     .schedule-grid {

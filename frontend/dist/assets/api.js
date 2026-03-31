@@ -24,6 +24,28 @@ export function fetchDashboardState() {
     return requestJson("/dashboard-state");
 }
 
+export function fetchSensorHistory(limit = 48) {
+    return requestJson(`/sensor-history?limit=${limit}`);
+}
+
+export function fetchDailySummaryHistory(limit = 14) {
+    return requestJson(`/daily-summary/history?limit=${limit}`);
+}
+
+export function startGrowCycle() {
+    return requestJson("/grow-cycles/start", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export function harvestGrowCycle() {
+    return requestJson("/grow-cycles/harvest", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
 export function turnLight(action) {
     return requestJson(`/actuators/light/${action}`, { method: "POST" });
 }

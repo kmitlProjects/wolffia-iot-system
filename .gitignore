@@ -15,3 +15,6 @@ __pycache__/
 .lgd-nfy*
 frontend/node_modules/
 frontend/.tsbuildinfo
+data/images/
+data/debug/
+data/exports/

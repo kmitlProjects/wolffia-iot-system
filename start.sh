@@ -17,6 +17,11 @@ error() {
 PIDS=()
 NAMES=()
 CLEANUP_DONE=0
+API_HOST="0.0.0.0"
+API_PORT="8000"
+SUBSCRIBER_PATTERN="python -u mqtt/subscriber.py"
+PUBLISHER_PATTERN="python -u mqtt/publisher.py"
+API_PATTERN="uvicorn api.api:app --host ${API_HOST} --port ${API_PORT}"
 
 cleanup() {
     if [ "$CLEANUP_DONE" -eq 1 ]; then
@@ -96,6 +101,67 @@ check_tcp_port() {
     fi
 }
 
+is_component_running() {
+    local pattern="$1"
+    pgrep -f "$pattern" >/dev/null 2>&1
+}
+
+is_tcp_port_in_use() {
+    local port="$1"
+    ss -H -ltn "( sport = :$port )" 2>/dev/null | grep -q .
+}
+
+log_tcp_port_usage() {
+    local port="$1"
+    local output
+
+    output="$(ss -ltnp "( sport = :$port )" 2>/dev/null | tail -n +2)"
+    if [ -z "$output" ]; then
+        return
+    fi
+
+    warn "รายละเอียด process ที่กำลังใช้พอร์ต $port:"
+    while IFS= read -r line; do
+        warn "$line"
+    done <<< "$output"
+}
+
+preflight_existing_stack() {
+    local existing_components=()
+
+    if is_component_running "$SUBSCRIBER_PATTERN"; then
+        existing_components+=("subscriber")
+    fi
+
+    if is_component_running "$PUBLISHER_PATTERN"; then
+        existing_components+=("publisher")
+    fi
+
+    if is_component_running "$API_PATTERN"; then
+        existing_components+=("api")
+    fi
+
+    if [ "${#existing_components[@]}" -eq 3 ]; then
+        log "พบ stack เดิมทำงานอยู่แล้ว (subscriber, publisher, api) จึงไม่เริ่มซ้ำ"
+        log "หากต้องการ restart ให้หยุด process เดิมก่อนแล้วค่อยรัน ./start.sh ใหม่"
+        return 10
+    fi
+
+    if [ "${#existing_components[@]}" -gt 0 ]; then
+        error "พบ component ที่กำลังรันอยู่แล้ว: ${existing_components[*]}"
+        error "กรุณาหยุด process เดิมก่อน เพื่อป้องกันการรันซ้ำ"
+        return 1
+    fi
+
+    if is_tcp_port_in_use "$API_PORT"; then
+        error "พอร์ต ${API_PORT} ถูกใช้งานอยู่แล้ว จึงไม่สามารถเริ่ม api ใหม่ได้"
+        log_tcp_port_usage "$API_PORT"
+        return 1
+    fi
+
+    return 0
+}
+
 load_runtime_targets() {
     mapfile -t runtime_targets < <(
         python -c 'from urllib.parse import urlparse; from config import MONGO_URI, MQTT_BROKER, MQTT_PORT; mongo = urlparse(MONGO_URI); print(MQTT_BROKER); print(MQTT_PORT); print(mongo.hostname or "localhost"); print(mongo.port or 27017)'
@@ -173,17 +239,26 @@ check_tcp_port "mosquitto" "$MQTT_HOST" "$MQTT_PORT"
 check_local_process "mongod" "$MONGO_HOST" "mongod"
 check_tcp_port "mongod" "$MONGO_HOST" "$MONGO_PORT"
 
+preflight_existing_stack
+PREFLIGHT_STATUS=$?
+if [ "$PREFLIGHT_STATUS" -eq 10 ]; then
+    exit 0
+fi
+if [ "$PREFLIGHT_STATUS" -ne 0 ]; then
+    exit 1
+fi
+
 start_component "subscriber" python -u mqtt/subscriber.py || {
     cleanup
     exit 1
 }
 
-start_component "publisher" python -u mqtt/publisher.py || {
+start_component "api" python -u -m uvicorn api.api:app --host "$API_HOST" --port "$API_PORT" || {
     cleanup
     exit 1
 }
 
-start_component "api" python -u -m uvicorn api.api:app --host 0.0.0.0 --port 8000 || {
+start_component "publisher" python -u mqtt/publisher.py || {
     cleanup
     exit 1
 }
