@@ -255,6 +255,20 @@ label {
     height: 100%;
 }
 
+.camera-roi-box {
+    position: absolute;
+    border: 3px solid rgba(255, 210, 80, 0.95);
+    box-shadow:
+        0 0 0 1px rgba(24, 48, 44, 0.45),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.camera-roi-box.hidden {
+    display: none;
+}
+
 .camera-stream {
     object-fit: cover;
     background: #0d1716;

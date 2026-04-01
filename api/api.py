@@ -316,7 +316,7 @@ def build_live_camera_analysis_preview(force_refresh: bool = False):
             raise RuntimeError("camera snapshot unavailable for live analysis")
 
         analysis = analyze_green_coverage_bytes(frame_bytes)
-        raw_bytes = _encode_preview_asset(".jpg", analysis["image"])
+        raw_bytes = _encode_preview_asset(".jpg", analysis["roi_preview_image"])
         mask_bytes = _encode_preview_asset(".png", analysis["mask_preview_image"])
         overlay_bytes = _encode_preview_asset(".jpg", analysis["overlay_image"])
         captured_at = datetime.now(ZoneInfo(APP_TIMEZONE))
@@ -343,6 +343,8 @@ def build_live_camera_analysis_preview(force_refresh: bool = False):
             "coverage_method": analysis["coverage_method"],
             "coverage_roi": analysis["roi"],
             "coverage_thresholds": analysis["thresholds"],
+            "image_width": analysis["image_width"],
+            "image_height": analysis["image_height"],
             "raw_url": "/camera/analysis-preview/raw",
             "mask_url": "/camera/analysis-preview/mask",
             "overlay_url": "/camera/analysis-preview/overlay",

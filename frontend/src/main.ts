@@ -46,8 +46,8 @@ const POLL_VISIBLE_MS = 30000
 const POLL_HIDDEN_MS = 30000
 const CAMERA_REFRESH_MS = 2500
 const CAMERA_RETRY_MS = 3000
-const LIVE_ANALYSIS_REFRESH_MS = 5000
-const LIVE_ANALYSIS_RETRY_MS = 7000
+const LIVE_ANALYSIS_REFRESH_MS = 8000
+const LIVE_ANALYSIS_RETRY_MS = 10000
 const DEFAULT_PUMP_DURATION = "5"
 
 let dashboardState: DashboardState | null = null
@@ -129,6 +129,7 @@ function createLayout(): string {
                                 class="camera-stream"
                                 alt="Live pond camera stream"
                             >
+                            <div id="camera-roi-box" class="camera-roi-box hidden" aria-hidden="true"></div>
                             <div id="camera-overlay" class="camera-overlay hidden">
                                 <p id="camera-overlay-copy">
                                     Camera paused to reduce CPU load.
@@ -1179,11 +1180,128 @@ function buildAnalysisAssetUrl(url: string | null | undefined, cacheKey: string)
     return `${url}${separator}v=${encodeURIComponent(cacheKey)}`
 }
 
+function getLiveAnalysisPreviewKey(analysis: LiveCameraAnalysis): string {
+    return String(analysis.captured_at || Date.now())
+}
+
+function preloadImageAsset(url: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const image = new Image()
+        image.decoding = "async"
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error(`โหลดภาพวิเคราะห์ไม่สำเร็จ: ${url}`))
+        image.src = url
+    })
+}
+
+async function preloadLiveAnalysisAssets(analysis: LiveCameraAnalysis): Promise<void> {
+    const previewKey = getLiveAnalysisPreviewKey(analysis)
+    const urls = [
+        buildAnalysisAssetUrl(analysis.raw_url, previewKey),
+        buildAnalysisAssetUrl(analysis.mask_url, previewKey),
+        buildAnalysisAssetUrl(analysis.overlay_url, previewKey),
+    ].filter((url): url is string => Boolean(url))
+
+    await Promise.all(urls.map((url) => preloadImageAsset(url)))
+}
+
+function ensureLiveAnalysisStrip(): void {
+    const strip = $("live-analysis-strip")
+    if (strip.dataset.mode === "tiles") {
+        return
+    }
+
+    strip.innerHTML = `
+        <a id="live-analysis-raw-tile" class="image-tile" target="_blank" rel="noreferrer">
+            <img alt="Current Snapshot" decoding="async" loading="eager">
+            <span>Current Snapshot</span>
+        </a>
+        <a id="live-analysis-mask-tile" class="image-tile" target="_blank" rel="noreferrer">
+            <img alt="Binary Mask" decoding="async" loading="eager">
+            <span>Binary Mask</span>
+        </a>
+        <a id="live-analysis-overlay-tile" class="image-tile" target="_blank" rel="noreferrer">
+            <img alt="Green Overlay" decoding="async" loading="eager">
+            <span>Green Overlay</span>
+        </a>
+    `
+    strip.dataset.mode = "tiles"
+}
+
+function updateLiveAnalysisTile(tileId: string, label: string, url: string | null): void {
+    const tile = document.getElementById(tileId) as HTMLAnchorElement | null
+    if (!tile) {
+        return
+    }
+
+    const image = tile.querySelector("img")
+    const caption = tile.querySelector("span")
+    if (caption) {
+        caption.textContent = label
+    }
+    if (image) {
+        image.setAttribute("alt", label)
+        if (url && image.getAttribute("src") !== url) {
+            image.setAttribute("src", url)
+        }
+    }
+
+    if (url) {
+        if (tile.getAttribute("href") !== url) {
+            tile.setAttribute("href", url)
+        }
+    } else {
+        tile.removeAttribute("href")
+        if (image) {
+            image.removeAttribute("src")
+        }
+    }
+}
+
 function clearLiveAnalysisTimer(): void {
     if (liveAnalysisTimer !== undefined) {
         window.clearTimeout(liveAnalysisTimer)
         liveAnalysisTimer = undefined
     }
+}
+
+function renderCameraRoiOverlay(): void {
+    const roiBox = document.getElementById("camera-roi-box") as HTMLDivElement | null
+    if (!roiBox) {
+        return
+    }
+
+    const roi = liveCameraAnalysis?.coverage_roi
+    const imageWidth = liveCameraAnalysis?.image_width || 640
+    const imageHeight = liveCameraAnalysis?.image_height || 480
+    if (
+        !cameraWanted ||
+        !roi ||
+        !roi.width ||
+        !roi.height ||
+        !imageWidth ||
+        !imageHeight
+    ) {
+        roiBox.classList.add("hidden")
+        return
+    }
+
+    const leftPercent = (roi.x / imageWidth) * 100
+    const topPercent = (roi.y / imageHeight) * 100
+    const widthPercent = (roi.width / imageWidth) * 100
+    const heightPercent = (roi.height / imageHeight) * 100
+    const cornerRadius = roi.corner_radius || 0
+    const radiusXPercent = (cornerRadius / roi.width) * 100
+    const radiusYPercent = (cornerRadius / roi.height) * 100
+
+    roiBox.style.left = `${leftPercent}%`
+    roiBox.style.top = `${topPercent}%`
+    roiBox.style.width = `${widthPercent}%`
+    roiBox.style.height = `${heightPercent}%`
+    roiBox.style.borderRadius = cornerRadius > 0
+        ? `${radiusXPercent}% / ${radiusYPercent}%`
+        : "0"
+    roiBox.classList.remove("hidden")
 }
 
 function renderLiveCameraAnalysis(): void {
@@ -1200,10 +1318,12 @@ function renderLiveCameraAnalysis(): void {
                 พื้นที่นี้จะแสดงภาพปัจจุบัน, binary mask และ green overlay จากเฟรมสดที่กำลังดูอยู่
             </div>
         `
+        strip.dataset.mode = "placeholder"
+        renderCameraRoiOverlay()
         return
     }
 
-    const previewKey = String(liveCameraAnalysis.captured_at || Date.now())
+    const previewKey = getLiveAnalysisPreviewKey(liveCameraAnalysis)
     const rawUrl = buildAnalysisAssetUrl(liveCameraAnalysis.raw_url, previewKey)
     const maskUrl = buildAnalysisAssetUrl(liveCameraAnalysis.mask_url, previewKey)
     const overlayUrl = buildAnalysisAssetUrl(liveCameraAnalysis.overlay_url, previewKey)
@@ -1214,16 +1334,11 @@ function renderLiveCameraAnalysis(): void {
         <span>${formatNumber(liveCameraAnalysis.green_pixels, 0)} / ${formatNumber(liveCameraAnalysis.total_pixels, 0)} green pixels</span>
     `
 
-    strip.innerHTML = [
-        ["Current Snapshot", rawUrl],
-        ["Binary Mask", maskUrl],
-        ["Green Overlay", overlayUrl],
-    ].map(([label, url]) => `
-        <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
-            <img alt="${escapeHtml(label)}" loading="lazy" src="${escapeHtml(url ?? "")}">
-            <span>${escapeHtml(label)}</span>
-        </a>
-    `).join("")
+    ensureLiveAnalysisStrip()
+    updateLiveAnalysisTile("live-analysis-raw-tile", "Current Snapshot", rawUrl)
+    updateLiveAnalysisTile("live-analysis-mask-tile", "Binary Mask", maskUrl)
+    updateLiveAnalysisTile("live-analysis-overlay-tile", "Green Overlay", overlayUrl)
+    renderCameraRoiOverlay()
 }
 
 function queueLiveAnalysisRefresh(delayMs = LIVE_ANALYSIS_REFRESH_MS): void {
@@ -1234,7 +1349,7 @@ function queueLiveAnalysisRefresh(delayMs = LIVE_ANALYSIS_REFRESH_MS): void {
 
     clearLiveAnalysisTimer()
     liveAnalysisTimer = window.setTimeout(() => {
-        void refreshLiveCameraAnalysis(true)
+        void refreshLiveCameraAnalysis(false)
     }, delayMs)
 }
 
@@ -1246,6 +1361,7 @@ async function refreshLiveCameraAnalysis(force = false): Promise<void> {
     liveCameraAnalysisPending = true
     try {
         const response = await fetchLiveCameraAnalysis(force)
+        await preloadLiveAnalysisAssets(response.analysis)
         liveCameraAnalysis = response.analysis
         renderLiveCameraAnalysis()
         queueLiveAnalysisRefresh(LIVE_ANALYSIS_REFRESH_MS)
@@ -1307,6 +1423,7 @@ function syncCamera(): void {
     clearLiveAnalysisTimer()
     stream.removeAttribute("src")
     cameraLoaded = false
+    renderCameraRoiOverlay()
     overlay.classList.remove("hidden")
     overlayCopy.textContent = cameraWanted
         ? "กล้องพักอัตโนมัติเมื่อแท็บไม่ถูกใช้งาน เพื่อลดภาระเครื่อง"
@@ -1468,7 +1585,9 @@ function bindEvents(): void {
             clearCameraTimer()
             $("camera-overlay").classList.add("hidden")
             queueNextCameraFrame(CAMERA_REFRESH_MS)
-            void refreshLiveCameraAnalysis(true)
+            if (!liveCameraAnalysis) {
+                void refreshLiveCameraAnalysis(true)
+            }
         })
 
         cameraStream.addEventListener("error", () => {

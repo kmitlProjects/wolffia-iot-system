@@ -250,7 +250,7 @@ class DailyImageScheduler:
         return buffer.tobytes()
 
     def _store_latest_debug_assets(self, local_now: datetime, analysis: dict, source_context: dict):
-        raw_bytes = self._encode_image(".jpg", analysis["image"])
+        raw_bytes = self._encode_image(".jpg", analysis["roi_preview_image"])
         mask_bytes = self._encode_image(".png", analysis["mask_preview_image"])
         overlay_bytes = self._encode_image(".jpg", analysis["overlay_image"])
 

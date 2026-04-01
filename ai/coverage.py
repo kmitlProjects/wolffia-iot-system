@@ -4,6 +4,7 @@ import numpy as np
 from config import (
     COVERAGE_H_MAX,
     COVERAGE_H_MIN,
+    COVERAGE_ROI_CORNER_RADIUS,
     COVERAGE_ROI_HEIGHT,
     COVERAGE_ROI_WIDTH,
     COVERAGE_ROI_X,
@@ -30,13 +31,167 @@ def _get_roi_bounds(image):
     roi_height = COVERAGE_ROI_HEIGHT or max(height - y, 1)
     roi_width = max(min(roi_width, width - x), 1)
     roi_height = max(min(roi_height, height - y), 1)
+    corner_radius = max(
+        min(COVERAGE_ROI_CORNER_RADIUS, roi_width // 2, roi_height // 2),
+        0,
+    )
 
     return {
         "x": x,
         "y": y,
         "width": roi_width,
         "height": roi_height,
+        "corner_radius": corner_radius,
     }
+
+
+def _draw_rounded_rectangle(image, roi, color, thickness=2):
+    x = roi["x"]
+    y = roi["y"]
+    width = roi["width"]
+    height = roi["height"]
+    radius = max(int(roi.get("corner_radius") or 0), 0)
+
+    if radius <= 0:
+        cv2.rectangle(
+            image,
+            (x, y),
+            (x + width - 1, y + height - 1),
+            color,
+            thickness,
+        )
+        return
+
+    left = x
+    top = y
+    right = x + width - 1
+    bottom = y + height - 1
+
+    cv2.line(
+        image,
+        (left + radius, top),
+        (right - radius, top),
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        image,
+        (right, top + radius),
+        (right, bottom - radius),
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        image,
+        (left + radius, bottom),
+        (right - radius, bottom),
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        image,
+        (left, top + radius),
+        (left, bottom - radius),
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.ellipse(
+        image,
+        (left + radius, top + radius),
+        (radius, radius),
+        180,
+        0,
+        90,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.ellipse(
+        image,
+        (right - radius, top + radius),
+        (radius, radius),
+        270,
+        0,
+        90,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.ellipse(
+        image,
+        (right - radius, bottom - radius),
+        (radius, radius),
+        0,
+        0,
+        90,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.ellipse(
+        image,
+        (left + radius, bottom - radius),
+        (radius, radius),
+        90,
+        0,
+        90,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+
+
+def _build_surface_mask(width: int, height: int, corner_radius: int):
+    mask = np.zeros((height, width), dtype=np.uint8)
+    radius = max(min(int(corner_radius), width // 2, height // 2), 0)
+    if radius <= 0:
+        mask[:, :] = 255
+        return mask
+
+    cv2.rectangle(mask, (radius, 0), (width - radius - 1, height - 1), 255, -1)
+    cv2.rectangle(mask, (0, radius), (width - 1, height - radius - 1), 255, -1)
+    cv2.circle(mask, (radius, radius), radius, 255, -1)
+    cv2.circle(mask, (width - radius - 1, radius), radius, 255, -1)
+    cv2.circle(mask, (radius, height - radius - 1), radius, 255, -1)
+    cv2.circle(
+        mask,
+        (width - radius - 1, height - radius - 1),
+        radius,
+        255,
+        -1,
+    )
+    return mask
+
+
+def _build_roi_preview_image(image, roi):
+    preview = cv2.addWeighted(
+        image,
+        0.42,
+        np.zeros_like(image),
+        0.58,
+        0.0,
+    )
+    x = roi["x"]
+    y = roi["y"]
+    width = roi["width"]
+    height = roi["height"]
+    preview[y : y + height, x : x + width] = image[y : y + height, x : x + width]
+    _draw_rounded_rectangle(preview, roi, (255, 210, 80), 2)
+    cv2.putText(
+        preview,
+        "Water surface ROI",
+        (16, 34),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.95,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    return preview
 
 
 def _build_overlay_image(image, mask, roi, coverage_percent: float):
@@ -54,13 +209,7 @@ def _build_overlay_image(image, mask, roi, coverage_percent: float):
     green_highlight[:, :, 1] = mask_bgr[:, :, 0]
     overlay = cv2.addWeighted(overlay, 1.0, green_highlight, 0.45, 0.0)
 
-    cv2.rectangle(
-        overlay,
-        (x, y),
-        (x + width - 1, y + height - 1),
-        (255, 210, 80),
-        2,
-    )
+    _draw_rounded_rectangle(overlay, roi, (255, 210, 80), 2)
     cv2.putText(
         overlay,
         f"Coverage {coverage_percent:.2f}%",
@@ -84,13 +233,7 @@ def _build_mask_preview(mask, image_shape, roi):
     roi_mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     preview[y : y + height, x : x + width] = roi_mask_bgr
 
-    cv2.rectangle(
-        preview,
-        (x, y),
-        (x + width - 1, y + height - 1),
-        (0, 255, 255),
-        2,
-    )
+    _draw_rounded_rectangle(preview, roi, (0, 255, 255), 2)
     cv2.putText(
         preview,
         "Green mask",
@@ -110,6 +253,7 @@ def analyze_green_coverage_image(image):
     y = roi["y"]
     width = roi["width"]
     height = roi["height"]
+    corner_radius = roi.get("corner_radius") or 0
 
     roi_image = image[y : y + height, x : x + width]
     hsv = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
@@ -124,13 +268,16 @@ def analyze_green_coverage_image(image):
     kernel = np.ones((5, 5), dtype=np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    surface_mask = _build_surface_mask(width, height, corner_radius)
+    mask = cv2.bitwise_and(mask, surface_mask)
 
     green_pixels = int(cv2.countNonZero(mask))
-    total_pixels = int(mask.size)
+    total_pixels = int(cv2.countNonZero(surface_mask))
     coverage_percent = 0.0
     if total_pixels > 0:
         coverage_percent = round((green_pixels * 100.0) / total_pixels, 2)
 
+    roi_preview_image = _build_roi_preview_image(image, roi)
     overlay_image = _build_overlay_image(image, mask, roi, coverage_percent)
     mask_preview_image = _build_mask_preview(mask, image.shape, roi)
 
@@ -146,6 +293,9 @@ def analyze_green_coverage_image(image):
             "s_min": COVERAGE_S_MIN,
             "v_min": COVERAGE_V_MIN,
         },
+        "image_width": int(image.shape[1]),
+        "image_height": int(image.shape[0]),
+        "roi_preview_image": roi_preview_image,
         "mask_image": mask,
         "mask_preview_image": mask_preview_image,
         "overlay_image": overlay_image,

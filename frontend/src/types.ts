@@ -51,12 +51,15 @@ export interface LiveCameraAnalysis {
     green_coverage_percent?: number | null
     green_pixels?: number | null
     total_pixels?: number | null
+    image_width?: number | null
+    image_height?: number | null
     coverage_method?: string | null
     coverage_roi?: {
         x: number
         y: number
         width: number
         height: number
+        corner_radius?: number | null
     } | null
     coverage_thresholds?: {
         h_min: number
