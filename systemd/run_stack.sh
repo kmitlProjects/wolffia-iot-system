@@ -17,6 +17,73 @@ error() {
     printf '[error] %s\n' "$1" >&2
 }
 
+append_unique_url() {
+    local candidate="$1"
+    local existing
+
+    [ -n "$candidate" ] || return
+
+    for existing in "${ACCESS_URLS[@]:-}"; do
+        if [ "$existing" = "$candidate" ]; then
+            return
+        fi
+    done
+
+    ACCESS_URLS+=("$candidate")
+}
+
+load_public_base_url() {
+    local env_file="$SCRIPT_DIR/.env"
+    if [ ! -f "$env_file" ]; then
+        return
+    fi
+
+    grep -E '^PUBLIC_BASE_URL=' "$env_file" | tail -n 1 | cut -d= -f2- | sed 's/^"//; s/"$//'
+}
+
+build_access_urls() {
+    ACCESS_URLS=()
+    local hostname_value ip raw_public_base_url
+
+    append_unique_url "http://127.0.0.1:${API_PORT}"
+
+    hostname_value="$(hostname 2>/dev/null || true)"
+    if [ -n "$hostname_value" ]; then
+        append_unique_url "http://${hostname_value}.local:${API_PORT}"
+    fi
+
+    for ip in $(hostname -I 2>/dev/null); do
+        append_unique_url "http://${ip}:${API_PORT}"
+    done
+
+    raw_public_base_url="$(load_public_base_url || true)"
+    append_unique_url "$raw_public_base_url"
+}
+
+print_access_urls() {
+    local url
+
+    build_access_urls
+    log "เปิดหน้าเว็บได้ที่ลิงก์เหล่านี้:"
+    for url in "${ACCESS_URLS[@]:-}"; do
+        printf '  - %s\n' "$url"
+    done
+    printf '  - %s\n' "http://127.0.0.1:${API_PORT}/dashboard-state"
+}
+
+wait_for_dashboard() {
+    local attempt
+
+    for attempt in $(seq 1 20); do
+        if curl -s -o /dev/null "http://127.0.0.1:${API_PORT}/dashboard-state"; then
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    return 1
+}
+
 PIDS=()
 NAMES=()
 CLEANUP_DONE=0
@@ -267,6 +334,12 @@ start_component "publisher" python -u mqtt/publisher.py || {
 }
 
 log "ทุก component เริ่มทำงานแล้ว กำลังเฝ้าดูสถานะ..."
+if wait_for_dashboard; then
+    print_access_urls
+else
+    warn "ทุก component ขึ้นแล้ว แต่หน้าเว็บยังไม่ตอบทันที ลองเปิดใหม่อีกครั้งในอีก 2-3 วินาที"
+    print_access_urls
+fi
 monitor_components
 STATUS=$?
 cleanup
