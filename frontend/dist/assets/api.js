@@ -87,6 +87,13 @@ export function exportTrainingDataset() {
     );
 }
 
+export function importModelDataTemplate(payload) {
+    return requestJson("/model-data/template/import", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
 export function previewHarvestPrediction(payload = {}) {
     return requestJson("/predictions/harvest/preview", {
         method: "POST",

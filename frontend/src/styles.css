@@ -454,6 +454,11 @@ label {
     line-height: 1.55;
 }
 
+.model-data-tools {
+    display: grid;
+    gap: 0.85rem;
+}
+
 .chart-head,
 .history-links {
     display: flex;
@@ -767,6 +772,10 @@ label {
         align-items: stretch;
     }
 
+    .model-data-tools {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .status-badge,
     .mini-chip {
         justify-content: center;
@@ -820,6 +829,11 @@ label {
 
     .day-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .model-data-tools {
+        grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1.1fr) auto;
+        align-items: end;
     }
 
     .fertilizer-grid {

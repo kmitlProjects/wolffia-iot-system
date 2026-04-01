@@ -225,6 +225,11 @@ export interface DashboardState {
     actuators: ActuatorState
     automation: AutomationState
     prediction_latest?: unknown
+    model_data?: {
+        latest_seed_cycle_id?: string | null
+        training_dataset_download_url?: string | null
+        template_download_url?: string | null
+    }
 }
 
 export interface HarvestPredictionPreviewResponse {

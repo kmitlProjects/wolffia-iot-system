@@ -120,6 +120,25 @@ export function exportTrainingDataset(): Promise<{
     )
 }
 
+export function importModelDataTemplate(payload: {
+    cycle_id: string
+    csv_text: string
+    filename?: string
+    skip_blank_rows?: boolean
+}): Promise<{
+    import_result: {
+        cycle_id: string
+        rows_updated: number
+        affected_dates: string[]
+        input_csv: string
+    }
+}> {
+    return requestJson("/model-data/template/import", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    })
+}
+
 export function previewHarvestPrediction(
     payload: { lookback_days?: number; sensor_limit?: number } = {},
 ): Promise<HarvestPredictionPreviewResponse> {

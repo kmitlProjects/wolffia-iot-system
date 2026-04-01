@@ -9,6 +9,7 @@ import {
     fetchLiveCameraAnalysis,
     fetchSensorHistory,
     harvestGrowCycle,
+    importModelDataTemplate,
     previewHarvestPrediction,
     setAutomationRuleEnabled,
     startAllFertilizerPumps,
@@ -19,7 +20,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260401v"
+} from "./api.js?v=20260401w"
 import type {
     DailySummary,
     DashboardState,
@@ -64,6 +65,7 @@ let cameraStreamNonce = 0
 let cycleActionPending = false
 let analysisRefreshPending = false
 let datasetExportPending = false
+let datasetImportPending = false
 let templateDownloadPending = false
 let predictionPreviewPending = false
 let predictionPreview: HarvestPredictionPreviewResponse | null = null
@@ -248,6 +250,30 @@ function createLayout(): string {
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
                             <div id="analysis-footer-note" class="analysis-note"></div>
+                            <div class="model-data-tools">
+                                <label for="seed-cycle-id-input">
+                                    Seed Cycle ID
+                                    <input
+                                        id="seed-cycle-id-input"
+                                        type="text"
+                                        placeholder="seed_cycle_..."
+                                    >
+                                </label>
+                                <label for="seed-readings-file-input">
+                                    Upload temp/pH CSV
+                                    <input
+                                        id="seed-readings-file-input"
+                                        type="file"
+                                        accept=".csv,text/csv"
+                                    >
+                                </label>
+                                <button id="upload-template-button" class="button-secondary" type="button">
+                                    Upload CSV
+                                </button>
+                            </div>
+                            <div id="model-data-upload-copy" class="helper-text">
+                                ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo สำหรับ seed cycle
+                            </div>
                         </div>
                     </section>
 
@@ -1386,6 +1412,16 @@ function setTemplateDownloadState(pending: boolean): void {
     button.textContent = pending ? "Preparing..." : "Download Template"
 }
 
+function setDatasetImportState(pending: boolean): void {
+    const button = document.getElementById("upload-template-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    button.disabled = pending
+    button.textContent = pending ? "Uploading..." : "Upload CSV"
+}
+
 function triggerBlobDownload(blob: Blob, filename: string): void {
     const objectUrl = URL.createObjectURL(blob)
     const anchor = document.createElement("a")
@@ -1397,6 +1433,11 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
     window.setTimeout(() => {
         URL.revokeObjectURL(objectUrl)
     }, 1500)
+}
+
+function getSeedCycleInputValue(): string {
+    const input = document.getElementById("seed-cycle-id-input") as HTMLInputElement | null
+    return (input?.value ?? "").trim()
 }
 
 function buildCameraSnapshotUrl(baseUrl: string): string {
@@ -1687,6 +1728,18 @@ function renderDashboard(state: DashboardState): void {
     $("timezone-chip").textContent = `TZ: ${state.meta.timezone}`
     $("generated-at").textContent = formatTimestamp(state.meta.generated_at)
 
+    const seedCycleInput = document.getElementById("seed-cycle-id-input") as HTMLInputElement | null
+    const modelDataCopy = document.getElementById("model-data-upload-copy") as HTMLElement | null
+    const latestSeedCycleId = state.model_data?.latest_seed_cycle_id ?? ""
+    if (seedCycleInput && !seedCycleInput.value.trim() && latestSeedCycleId) {
+        seedCycleInput.value = latestSeedCycleId
+    }
+    if (modelDataCopy) {
+        modelDataCopy.textContent = latestSeedCycleId
+            ? `seed cycle ล่าสุด: ${latestSeedCycleId} • ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo`
+            : "ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo สำหรับ seed cycle"
+    }
+
     $("sensor-temp").textContent = `${formatNumber(sensor?.temp)} °C`
     $("sensor-ph").textContent = formatNumber(sensor?.ph, 2)
     $("sensor-coverage").textContent = `${formatNumber(sensor?.green_coverage_percent, 2)} %`
@@ -1821,6 +1874,7 @@ function bindRuleContainer(containerId: string): void {
 function bindEvents(): void {
     setAnalysisRefreshState(false)
     setDatasetExportState(false)
+    setDatasetImportState(false)
     setTemplateDownloadState(false)
     setPredictionPreviewState(false)
     renderLiveCameraAnalysis()
@@ -1921,6 +1975,53 @@ function bindEvents(): void {
         } finally {
             datasetExportPending = false
             setDatasetExportState(false)
+        }
+    })
+
+    $("upload-template-button").addEventListener("click", async () => {
+        if (datasetImportPending) {
+            return
+        }
+
+        const cycleId = getSeedCycleInputValue()
+        const fileInput = document.getElementById("seed-readings-file-input") as HTMLInputElement | null
+        const file = fileInput?.files?.[0]
+
+        if (!cycleId) {
+            setMessage("กรุณากรอก Seed Cycle ID ก่อนอัปโหลด", "error")
+            return
+        }
+
+        if (!file) {
+            setMessage("กรุณาเลือกไฟล์ CSV ก่อนอัปโหลด", "error")
+            return
+        }
+
+        datasetImportPending = true
+        setDatasetImportState(true)
+        try {
+            const csvText = await file.text()
+            const result = await importModelDataTemplate({
+                cycle_id: cycleId,
+                csv_text: csvText,
+                filename: file.name,
+                skip_blank_rows: true,
+            })
+            const rowsUpdated = result.import_result?.rows_updated ?? 0
+            await refreshDashboard(true)
+            if (dashboardState) {
+                renderDashboard(dashboardState)
+            }
+            if (fileInput) {
+                fileInput.value = ""
+            }
+            setMessage(`อัปโหลด CSV แล้ว (${rowsUpdated} rows updated)`)
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "อัปโหลด CSV ไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            datasetImportPending = false
+            setDatasetImportState(false)
         }
     })
 

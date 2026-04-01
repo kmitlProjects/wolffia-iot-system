@@ -11,6 +11,7 @@ from ai.daily_summary import ensure_daily_summary_indexes, summarize_day
 from ai.coverage import analyze_green_coverage_bytes
 from ai.export_training_dataset import export_training_dataset
 from ai.feature_builder import build_harvest_feature_bundle
+from ai.import_seed_readings_to_mongo import import_seed_readings
 from ai.seed_image_series_to_mongo import generate_readings_template
 from ai.predictions import (
     HARVEST_PREDICTION_TYPE,
@@ -84,6 +85,7 @@ FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 FRONTEND_INDEX_PATH = os.path.join(FRONTEND_DIST_DIR, "index.html")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MODEL_EXPORT_DIR = os.path.join(DATA_DIR, "exports", "model_training")
+MODEL_UPLOAD_DIR = os.path.join(MODEL_EXPORT_DIR, "uploads")
 TRAINING_DATASET_PATH = os.path.join(MODEL_EXPORT_DIR, "harvest_training_dataset.csv")
 TEMPLATE_DATASET_PATH = os.path.join(
     MODEL_EXPORT_DIR,
@@ -92,6 +94,7 @@ TEMPLATE_DATASET_PATH = os.path.join(
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(MODEL_EXPORT_DIR, exist_ok=True)
+os.makedirs(MODEL_UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI()
 
@@ -194,6 +197,13 @@ class HarvestPredictionRequest(BaseModel):
     sensor_limit: int = PREDICTION_SENSOR_LIMIT
 
 
+class ModelDataImportRequest(BaseModel):
+    cycle_id: str
+    csv_text: str
+    filename: str | None = None
+    skip_blank_rows: bool = True
+
+
 def serialize_document(document):
     if document is None:
         return None
@@ -225,6 +235,17 @@ def get_active_grow_cycle():
 
 def get_latest_prediction_document():
     return get_latest_prediction_run(prediction_collection)
+
+
+def get_latest_seed_cycle_document():
+    return grow_cycle_collection.find_one(
+        {
+            "cycle_id": {
+                "$regex": r"^seed_cycle_",
+            }
+        },
+        sort=[("planted_at", -1)],
+    )
 
 
 def get_grow_cycle_history(limit: int = 20):
@@ -291,6 +312,13 @@ def get_dashboard_state():
         "daily_summary": serialize_document(get_latest_daily_summary()),
         "grow_cycle": serialize_document(get_active_grow_cycle()),
         "prediction_latest": serialize_document(get_latest_prediction_document()),
+        "model_data": {
+            "latest_seed_cycle_id": (
+                get_latest_seed_cycle_document() or {}
+            ).get("cycle_id"),
+            "training_dataset_download_url": "/model-data/training-dataset/download?allow_missing_sensor=true",
+            "template_download_url": "/model-data/template/download",
+        },
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
     }
@@ -563,6 +591,35 @@ def download_training_dataset(
     response.headers["X-Ready-Rows"] = str(export_meta["rows_ready_for_training"])
     response.headers["X-Cycle-Count"] = str(export_meta["cycle_count"])
     return response
+
+
+@app.post("/model-data/template/import")
+def import_model_data_template(payload: ModelDataImportRequest):
+    cycle_id = (payload.cycle_id or "").strip()
+    csv_text = payload.csv_text or ""
+    if not cycle_id:
+        raise HTTPException(status_code=400, detail="cycle_id is required")
+    if not csv_text.strip():
+        raise HTTPException(status_code=400, detail="csv_text is required")
+
+    safe_name = Path(payload.filename or "uploaded_seed_readings.csv").name
+    timestamp_label = datetime.now(ZoneInfo(APP_TIMEZONE)).strftime("%Y%m%d_%H%M%S")
+    target_path = Path(MODEL_UPLOAD_DIR) / f"{timestamp_label}_{safe_name}"
+    target_path.write_text(csv_text, encoding="utf-8")
+
+    try:
+        result = import_seed_readings(
+            input_csv=target_path,
+            cycle_id=cycle_id,
+            timezone_name=APP_TIMEZONE,
+            skip_blank_rows=payload.skip_blank_rows,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "import_result": result,
+    }
 
 
 @app.get("/grow-cycles/active")
