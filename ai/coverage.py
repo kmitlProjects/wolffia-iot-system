@@ -4,6 +4,7 @@ import numpy as np
 from config import (
     COVERAGE_H_MAX,
     COVERAGE_H_MIN,
+    COVERAGE_VERSION,
     COVERAGE_ROI_CORNER_RADIUS,
     COVERAGE_ROI_HEIGHT,
     COVERAGE_ROI_REFERENCE_HEIGHT,
@@ -14,6 +15,8 @@ from config import (
     COVERAGE_S_MIN,
     COVERAGE_V_MIN,
 )
+
+COVERAGE_METHOD_NAME = "lab_clahe_exg_otsu_v3"
 
 
 def decode_jpeg_bytes(frame_bytes: bytes):
@@ -358,7 +361,8 @@ def analyze_green_coverage_image(image):
         "green_coverage_percent": coverage_percent,
         "green_pixels": green_pixels,
         "total_pixels": total_pixels,
-        "coverage_method": "lab_clahe_exg_otsu_v3",
+        "coverage_method": COVERAGE_METHOD_NAME,
+        "coverage_version": COVERAGE_VERSION,
         "roi": roi,
         "thresholds": thresholds,
         "image_width": int(image.shape[1]),

@@ -50,6 +50,15 @@ def verify_mongo():
 
 def ensure_indexes():
     collection.create_index("timestamp", name="sensor_timestamp_idx")
+    collection.create_index(
+        [
+            ("coverage_method", 1),
+            ("coverage_version", 1),
+            ("cycle_id", 1),
+            ("timestamp", 1),
+        ],
+        name="sensor_coverage_cycle_timestamp_idx",
+    )
     print("สร้าง MongoDB index สำหรับ sensor_data.timestamp แล้ว")
     ensure_daily_summary_indexes(daily_summary_collection)
     ensure_grow_cycle_indexes(grow_cycle_collection)

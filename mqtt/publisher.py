@@ -117,11 +117,17 @@ while True:
             print("กำลังประมวลผล coverage จาก image analysis ...")
             analysis = fetch_hourly_coverage()
             coverage_value = analysis.get("green_coverage_percent")
+            coverage_method = analysis.get("coverage_method")
+            coverage_version = analysis.get("coverage_version")
             print(f"green coverage ล่าสุด: {coverage_value}")
         except (urllib_error.URLError, TimeoutError, ValueError) as exc:
             print(f"ไม่สามารถดึง coverage จาก API ได้: {exc}")
+            coverage_method = None
+            coverage_version = None
         except Exception as exc:
             print(f"เกิดข้อผิดพลาดระหว่างประมวลผล coverage: {exc}")
+            coverage_method = None
+            coverage_version = None
 
         data = {
             "timestamp": datetime.now(ZoneInfo(APP_TIMEZONE)).isoformat(
@@ -130,6 +136,8 @@ while True:
             "ph": ph_value,
             "temp": temp_value,
             "green_coverage_percent": coverage_value,
+            "coverage_method": coverage_method,
+            "coverage_version": coverage_version,
         }
 
         # 3. ส่งข้อมูล (Publish)

@@ -341,6 +341,7 @@ def build_live_camera_analysis_preview(force_refresh: bool = False):
             "green_pixels": analysis["green_pixels"],
             "total_pixels": analysis["total_pixels"],
             "coverage_method": analysis["coverage_method"],
+            "coverage_version": analysis["coverage_version"],
             "coverage_roi": analysis["roi"],
             "coverage_thresholds": analysis["thresholds"],
             "image_width": analysis["image_width"],
