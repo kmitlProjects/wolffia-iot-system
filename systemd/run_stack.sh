@@ -41,9 +41,49 @@ load_public_base_url() {
     grep -E '^PUBLIC_BASE_URL=' "$env_file" | tail -n 1 | cut -d= -f2- | sed 's/^"//; s/"$//'
 }
 
+get_primary_ip() {
+    local route_ip fallback_ip
+
+    route_ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+    if [ -n "$route_ip" ]; then
+        printf '%s\n' "$route_ip"
+        return
+    fi
+
+    fallback_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    if [ -n "$fallback_ip" ]; then
+        printf '%s\n' "$fallback_ip"
+    fi
+}
+
+sync_public_base_url() {
+    local env_file="$SCRIPT_DIR/.env"
+    local primary_ip desired_url current_url
+
+    [ -f "$env_file" ] || return
+
+    primary_ip="$(get_primary_ip || true)"
+    [ -n "$primary_ip" ] || return
+
+    desired_url="http://${primary_ip}:${API_PORT}"
+    current_url="$(load_public_base_url || true)"
+
+    if [ "$current_url" = "$desired_url" ]; then
+        return
+    fi
+
+    if grep -q '^PUBLIC_BASE_URL=' "$env_file"; then
+        sed -i "s|^PUBLIC_BASE_URL=.*$|PUBLIC_BASE_URL=${desired_url}|" "$env_file"
+    else
+        printf '\nPUBLIC_BASE_URL=%s\n' "$desired_url" >> "$env_file"
+    fi
+
+    log "อัปเดต PUBLIC_BASE_URL เป็น ${desired_url}"
+}
+
 build_access_urls() {
     ACCESS_URLS=()
-    local hostname_value ip raw_public_base_url
+    local hostname_value ip raw_public_base_url primary_ip
 
     append_unique_url "http://127.0.0.1:${API_PORT}"
 
@@ -51,6 +91,9 @@ build_access_urls() {
     if [ -n "$hostname_value" ]; then
         append_unique_url "http://${hostname_value}.local:${API_PORT}"
     fi
+
+    primary_ip="$(get_primary_ip || true)"
+    append_unique_url "${primary_ip:+http://${primary_ip}:${API_PORT}}"
 
     for ip in $(hostname -I 2>/dev/null); do
         append_unique_url "http://${ip}:${API_PORT}"
@@ -302,6 +345,7 @@ fi
 
 source venv/bin/activate
 load_runtime_targets
+sync_public_base_url
 
 log "ตรวจสอบ service ที่ต้องใช้ก่อนเริ่มระบบ"
 check_local_process "mosquitto" "$MQTT_HOST" "mosquitto"
