@@ -33,6 +33,47 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     return data as T
 }
 
+function extractFilename(response: Response, fallback: string): string {
+    const header = response.headers.get("content-disposition") ?? ""
+    const match = header.match(/filename="?([^"]+)"?/)
+    return match?.[1] || fallback
+}
+
+async function requestDownload(
+    url: string,
+    fallbackFilename: string,
+): Promise<{
+    blob: Blob
+    filename: string
+    headers: Headers
+}> {
+    const response = await fetch(url, {
+        headers: {
+            Accept: "text/csv,application/octet-stream,*/*",
+        },
+    })
+
+    if (!response.ok) {
+        let message = "request failed"
+        try {
+            const data = await response.json()
+            message =
+                (data as { detail?: string; error?: string }).detail ||
+                (data as { detail?: string; error?: string }).error ||
+                message
+        } catch {
+            message = response.statusText || message
+        }
+        throw new Error(message)
+    }
+
+    return {
+        blob: await response.blob(),
+        filename: extractFilename(response, fallbackFilename),
+        headers: response.headers,
+    }
+}
+
 export function fetchDashboardState(): Promise<DashboardState> {
     return requestJson<DashboardState>("/dashboard-state")
 }
@@ -55,6 +96,28 @@ export function fetchLiveCameraAnalysis(
     force = false,
 ): Promise<{ analysis: LiveCameraAnalysis }> {
     return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`)
+}
+
+export function downloadModelDataTemplate(): Promise<{
+    blob: Blob
+    filename: string
+    headers: Headers
+}> {
+    return requestDownload(
+        "/model-data/template/download",
+        "image_seed_readings_template.csv",
+    )
+}
+
+export function exportTrainingDataset(): Promise<{
+    blob: Blob
+    filename: string
+    headers: Headers
+}> {
+    return requestDownload(
+        "/model-data/training-dataset/download?allow_missing_sensor=true",
+        "harvest_training_dataset.csv",
+    )
 }
 
 export function previewHarvestPrediction(

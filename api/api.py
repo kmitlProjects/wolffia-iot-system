@@ -3,12 +3,15 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import cv2
 from ai.daily_summary import ensure_daily_summary_indexes, summarize_day
 from ai.coverage import analyze_green_coverage_bytes
+from ai.export_training_dataset import export_training_dataset
 from ai.feature_builder import build_harvest_feature_bundle
+from ai.seed_image_series_to_mongo import generate_readings_template
 from ai.predictions import (
     HARVEST_PREDICTION_TYPE,
     assess_harvest_prediction_readiness,
@@ -80,8 +83,15 @@ FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 FRONTEND_INDEX_PATH = os.path.join(FRONTEND_DIST_DIR, "index.html")
 DATA_DIR = os.path.join(BASE_DIR, "data")
+MODEL_EXPORT_DIR = os.path.join(DATA_DIR, "exports", "model_training")
+TRAINING_DATASET_PATH = os.path.join(MODEL_EXPORT_DIR, "harvest_training_dataset.csv")
+TEMPLATE_DATASET_PATH = os.path.join(
+    MODEL_EXPORT_DIR,
+    "image_seed_readings_template.csv",
+)
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(MODEL_EXPORT_DIR, exist_ok=True)
 
 app = FastAPI()
 
@@ -284,6 +294,18 @@ def get_dashboard_state():
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
     }
+
+
+def _file_download_response(path: str | Path, download_name: str, media_type: str = "text/csv"):
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=download_name,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 def _encode_preview_asset(extension: str, image):
@@ -498,6 +520,49 @@ def capture_image_now():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {"image_analysis": serialize_document(document)}
+
+
+@app.get("/model-data/template/download")
+def download_model_data_template():
+    try:
+        output_path = generate_readings_template(
+            IMAGE_ANALYSIS_SIMULATION_DIR,
+            TEMPLATE_DATASET_PATH,
+            APP_TIMEZONE,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return _file_download_response(
+        output_path,
+        os.path.basename(str(output_path)),
+    )
+
+
+@app.get("/model-data/training-dataset/download")
+def download_training_dataset(
+    cycle_id: str | None = None,
+    include_active: bool = False,
+    allow_missing_sensor: bool = True,
+):
+    try:
+        export_meta = export_training_dataset(
+            TRAINING_DATASET_PATH,
+            cycle_id=cycle_id,
+            include_active=include_active,
+            allow_missing_sensor=allow_missing_sensor,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    response = _file_download_response(
+        TRAINING_DATASET_PATH,
+        os.path.basename(TRAINING_DATASET_PATH),
+    )
+    response.headers["X-Exported-Rows"] = str(export_meta["rows_exported"])
+    response.headers["X-Ready-Rows"] = str(export_meta["rows_ready_for_training"])
+    response.headers["X-Cycle-Count"] = str(export_meta["cycle_count"])
+    return response
 
 
 @app.get("/grow-cycles/active")

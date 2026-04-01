@@ -2,6 +2,8 @@ import {
     createLightSchedule,
     createPumpWaterSchedule,
     deleteAutomationRule,
+    downloadModelDataTemplate,
+    exportTrainingDataset,
     fetchDailySummaryHistory,
     fetchDashboardState,
     fetchLiveCameraAnalysis,
@@ -17,7 +19,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js"
+} from "./api.js?v=20260401v"
 import type {
     DailySummary,
     DashboardState,
@@ -61,6 +63,8 @@ let cameraLoaded = false
 let cameraStreamNonce = 0
 let cycleActionPending = false
 let analysisRefreshPending = false
+let datasetExportPending = false
+let templateDownloadPending = false
 let predictionPreviewPending = false
 let predictionPreview: HarvestPredictionPreviewResponse | null = null
 let liveCameraAnalysisPending = false
@@ -228,9 +232,17 @@ function createLayout(): string {
                                     <h2>Capture &amp; Model Data</h2>
                                     <p>สรุปข้อมูลที่ระบบเก็บจริงและจะถูกใช้ต่อใน feature builder สำหรับโมเดล</p>
                                 </div>
-                                <button id="analysis-refresh-button" class="button-ghost" type="button">
-                                    Refresh Hub
-                                </button>
+                                <div class="panel-actions">
+                                    <button id="analysis-refresh-button" class="button-ghost" type="button">
+                                        Refresh Hub
+                                    </button>
+                                    <button id="download-template-button" class="button-secondary" type="button">
+                                        Download Template
+                                    </button>
+                                    <button id="export-dataset-button" class="button-primary" type="button">
+                                        Export Dataset
+                                    </button>
+                                </div>
                             </div>
                             <div id="analysis-preview-meta" class="history-metrics"></div>
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
@@ -1073,6 +1085,7 @@ function renderDailySummarySection(
     footerNote.innerHTML = `
         ใช้การ์ดนี้ดูเฉพาะข้อมูลที่ส่งต่อไปทำ dataset และโมเดล
         ส่วนภาพ raw, binary mask และ overlay ให้ดูจาก Live OpenCV Preview ด้านบน
+        Template ใช้กรอก temp/pH ย้อนหลัง แล้วค่อย import กลับเข้า Mongo ก่อน export dataset รอบถัดไป
     `
 }
 
@@ -1351,6 +1364,39 @@ function setPredictionPreviewState(pending: boolean): void {
     button.title = requiresActiveCycle
         ? "เริ่มรอบปลูกก่อน แล้วระบบจึงจะ preview ความพร้อมสำหรับการทำนายวันเก็บเกี่ยวได้"
         : ""
+}
+
+function setDatasetExportState(pending: boolean): void {
+    const button = document.getElementById("export-dataset-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    button.disabled = pending
+    button.textContent = pending ? "Exporting..." : "Export Dataset"
+}
+
+function setTemplateDownloadState(pending: boolean): void {
+    const button = document.getElementById("download-template-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    button.disabled = pending
+    button.textContent = pending ? "Preparing..." : "Download Template"
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = objectUrl
+    anchor.download = filename
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl)
+    }, 1500)
 }
 
 function buildCameraSnapshotUrl(baseUrl: string): string {
@@ -1774,6 +1820,8 @@ function bindRuleContainer(containerId: string): void {
 
 function bindEvents(): void {
     setAnalysisRefreshState(false)
+    setDatasetExportState(false)
+    setTemplateDownloadState(false)
     setPredictionPreviewState(false)
     renderLiveCameraAnalysis()
 
@@ -1831,6 +1879,48 @@ function bindEvents(): void {
         } finally {
             analysisRefreshPending = false
             setAnalysisRefreshState(false)
+        }
+    })
+
+    $("download-template-button").addEventListener("click", async () => {
+        if (templateDownloadPending) {
+            return
+        }
+
+        templateDownloadPending = true
+        setTemplateDownloadState(true)
+        try {
+            const result = await downloadModelDataTemplate()
+            triggerBlobDownload(result.blob, result.filename)
+            setMessage("ดาวน์โหลด template สำหรับกรอก temp/pH แล้ว")
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "ดาวน์โหลด template ไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            templateDownloadPending = false
+            setTemplateDownloadState(false)
+        }
+    })
+
+    $("export-dataset-button").addEventListener("click", async () => {
+        if (datasetExportPending) {
+            return
+        }
+
+        datasetExportPending = true
+        setDatasetExportState(true)
+        try {
+            const result = await exportTrainingDataset()
+            triggerBlobDownload(result.blob, result.filename)
+            const exportedRows = result.headers.get("X-Exported-Rows") ?? "0"
+            const readyRows = result.headers.get("X-Ready-Rows") ?? "0"
+            setMessage(`export dataset แล้ว (${readyRows}/${exportedRows} rows ready)`)
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "export dataset ไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            datasetExportPending = false
+            setDatasetExportState(false)
         }
     })
 

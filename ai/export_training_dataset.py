@@ -122,9 +122,13 @@ def _numeric_stats(documents, field_name: str):
     }
 
 
-def main():
-    args = parse_args()
-    output_csv = Path(args.output_csv)
+def export_training_dataset(
+    output_csv: str | Path,
+    cycle_id: str | None = None,
+    include_active: bool = False,
+    allow_missing_sensor: bool = False,
+):
+    output_csv = Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     client = MongoClient(MONGO_URI, tz_aware=True)
@@ -134,10 +138,10 @@ def main():
     sensor_collection = db[MONGO_COLLECTION]
 
     cycle_query = {}
-    if not args.include_active:
+    if not include_active:
         cycle_query["status"] = "harvested"
-    if args.cycle_id:
-        cycle_query["cycle_id"] = args.cycle_id
+    if cycle_id:
+        cycle_query["cycle_id"] = cycle_id
 
     cycles = list(cycle_collection.find(cycle_query).sort("planted_at", 1))
     fieldnames = [
@@ -254,7 +258,7 @@ def main():
             has_label = days_to_harvest_label is not None
             row_ready_for_training = bool(has_temp_ph and has_label)
 
-            if not args.allow_missing_sensor and not has_temp_ph:
+            if not allow_missing_sensor and not has_temp_ph:
                 continue
 
             if row_ready_for_training:
@@ -323,6 +327,22 @@ def main():
     print(f"rows exported: {len(exported_rows)}")
     print(f"rows ready for training: {ready_count}")
     print(f"csv: {output_csv}")
+    return {
+        "cycle_count": cycle_count,
+        "rows_exported": len(exported_rows),
+        "rows_ready_for_training": ready_count,
+        "output_csv": str(output_csv),
+    }
+
+
+def main():
+    args = parse_args()
+    export_training_dataset(
+        output_csv=args.output_csv,
+        cycle_id=args.cycle_id,
+        include_active=args.include_active,
+        allow_missing_sensor=args.allow_missing_sensor,
+    )
 
 
 if __name__ == "__main__":

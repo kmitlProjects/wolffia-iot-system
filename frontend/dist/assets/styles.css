@@ -243,6 +243,14 @@ label {
     gap: 1rem;
 }
 
+.panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
 .panel-title {
     display: grid;
     gap: 0.3rem;
@@ -749,6 +757,12 @@ label {
     .rule-title,
     .badge-row,
     .link-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .panel-actions {
+        width: 100%;
         flex-direction: column;
         align-items: stretch;
     }

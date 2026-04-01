@@ -20,6 +20,37 @@ async function requestJson(url, init) {
     return data;
 }
 
+function extractFilename(response, fallback) {
+    const header = response.headers.get("content-disposition") ?? "";
+    const match = header.match(/filename="?([^"]+)"?/);
+    return match?.[1] || fallback;
+}
+
+async function requestDownload(url, fallbackFilename) {
+    const response = await fetch(url, {
+        headers: {
+            Accept: "text/csv,application/octet-stream,*/*",
+        },
+    });
+
+    if (!response.ok) {
+        let message = "request failed";
+        try {
+            const data = await response.json();
+            message = data.detail || data.error || message;
+        } catch {
+            message = response.statusText || message;
+        }
+        throw new Error(message);
+    }
+
+    return {
+        blob: await response.blob(),
+        filename: extractFilename(response, fallbackFilename),
+        headers: response.headers,
+    };
+}
+
 export function fetchDashboardState() {
     return requestJson("/dashboard-state");
 }
@@ -40,6 +71,20 @@ export function analyzeImageNow() {
 
 export function fetchLiveCameraAnalysis(force = false) {
     return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`);
+}
+
+export function downloadModelDataTemplate() {
+    return requestDownload(
+        "/model-data/template/download",
+        "image_seed_readings_template.csv",
+    );
+}
+
+export function exportTrainingDataset() {
+    return requestDownload(
+        "/model-data/training-dataset/download?allow_missing_sensor=true",
+        "harvest_training_dataset.csv",
+    );
 }
 
 export function previewHarvestPrediction(payload = {}) {

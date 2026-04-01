@@ -183,6 +183,15 @@ def export_readings_template(path: str, items, timezone_name: str):
     return output_path
 
 
+def generate_readings_template(
+    input_dir: str | Path,
+    output_path: str | Path,
+    timezone_name: str,
+):
+    items = list_simulation_images(input_dir)
+    return export_readings_template(str(output_path), items, timezone_name)
+
+
 def derive_observed_at(
     planted_at: datetime,
     day_index: int,
