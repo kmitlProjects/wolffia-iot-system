@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import threading
 import time
@@ -29,7 +30,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from pymongo import MongoClient
 from grow_cycle import (
     ensure_grow_cycle_indexes,
@@ -296,6 +297,64 @@ def resolve_fertilizer_duration_seconds(payload: PumpFertilizerRequest):
         return duration_seconds
 
     raise ValueError("water_liters or duration_seconds is required")
+
+
+def _validation_error_to_message(exc: ValidationError) -> str:
+    return "; ".join(
+        error.get("msg", "invalid request")
+        for error in exc.errors()
+    ) or "invalid request"
+
+
+async def _parse_request_model(
+    request: Request,
+    model_class: type[BaseModel],
+    query_fields: tuple[str, ...] = (),
+):
+    payload = {}
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form = await request.form()
+        for key, value in form.multi_items():
+            if value in ("", None):
+                continue
+            if key == "days":
+                payload.setdefault("days", []).append(value)
+                continue
+            payload[key] = value
+    else:
+        body = await request.body()
+        if body:
+            try:
+                decoded = json.loads(body)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+            if not isinstance(decoded, dict):
+                raise HTTPException(status_code=400, detail="request body must be a JSON object")
+            payload.update(decoded)
+
+    for field_name in query_fields:
+        if field_name in payload:
+            continue
+        value = request.query_params.get(field_name)
+        if value not in (None, ""):
+            payload[field_name] = value
+
+    if "days" not in payload:
+        days = request.query_params.getlist("days")
+        if days:
+            payload["days"] = days
+
+    try:
+        if hasattr(model_class, "model_validate"):
+            return model_class.model_validate(payload)
+        return model_class.parse_obj(payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=_validation_error_to_message(exc),
+        ) from exc
 
 
 def get_latest_document():
@@ -847,8 +906,13 @@ def create_light_automation_rule(payload: LightAutomationRequest):
     return {"rule": rule}
 
 @app.post("/automation/pump-water")
-def create_pump_water_automation_rule(payload: PumpWaterAutomationRequest):
+async def create_pump_water_automation_rule(request: Request):
     try:
+        payload = await _parse_request_model(
+            request,
+            PumpWaterAutomationRequest,
+            query_fields=("start_time", "duration_seconds", "water_liters", "enabled"),
+        )
         duration_seconds, water_liters = resolve_water_pump_duration_seconds(payload)
         rule = automation_scheduler.create_pump_water_rule(
             payload.start_time,
@@ -889,8 +953,13 @@ def turn_light_off():
     return {"light": light_off()}
 
 @app.post("/actuators/pump-water/start")
-def start_pump_water(payload: PumpWaterRequest):
+async def start_pump_water(request: Request):
     try:
+        payload = await _parse_request_model(
+            request,
+            PumpWaterRequest,
+            query_fields=("duration_seconds", "water_liters"),
+        )
         duration_seconds, _ = resolve_water_pump_duration_seconds(payload)
         status = run_pump_water(duration_seconds)
     except ValueError as exc:
@@ -903,8 +972,13 @@ def stop_water_pump():
     return {"pump_water": stop_pump_water()}
 
 @app.post("/actuators/pump-fertilizer/{pump_id}/start")
-def start_single_fertilizer_pump(pump_id: int, payload: PumpFertilizerRequest):
+async def start_single_fertilizer_pump(pump_id: int, request: Request):
     try:
+        payload = await _parse_request_model(
+            request,
+            PumpFertilizerRequest,
+            query_fields=("duration_seconds", "water_liters"),
+        )
         status = run_fertilizer_pump(
             pump_id,
             resolve_fertilizer_duration_seconds(payload),
