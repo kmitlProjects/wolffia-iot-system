@@ -138,6 +138,7 @@ def _build_daily_summary_snapshot(document):
         "ph_min": _coerce_float(document.get("ph_min")),
         "ph_max": _coerce_float(document.get("ph_max")),
         "green_coverage_avg": _coerce_float(document.get("green_coverage_avg")),
+        "green_coverage_max": _coerce_float(document.get("green_coverage_max")),
         "daily_image_coverage_percent": _coerce_float(
             document.get("daily_image_coverage_percent")
         ),
@@ -170,9 +171,14 @@ def _build_daily_points(summary_documents):
             "cycle_day_index": document.get("cycle_day_index"),
             "sensor_count": document.get("sensor_count"),
             "temp_avg": _coerce_float(document.get("temp_avg")),
+            "temp_max": _coerce_float(document.get("temp_max")),
             "ph_avg": _coerce_float(document.get("ph_avg")),
+            "ph_max": _coerce_float(document.get("ph_max")),
             "green_coverage_avg": _coerce_float(
                 document.get("green_coverage_avg")
+            ),
+            "green_coverage_max": _coerce_float(
+                document.get("green_coverage_max")
             ),
             "daily_image_coverage_percent": _coerce_float(
                 document.get("daily_image_coverage_percent")

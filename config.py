@@ -69,6 +69,7 @@ DAILY_SUMMARY_COLLECTION = os.getenv("DAILY_SUMMARY_COLLECTION", "daily_summary"
 GROW_CYCLE_COLLECTION = os.getenv("GROW_CYCLE_COLLECTION", "grow_cycles")
 PREDICTION_COLLECTION = os.getenv("PREDICTION_COLLECTION", "prediction_runs")
 DEBUG_OUTPUT_DIR = os.getenv("DEBUG_OUTPUT_DIR", str(BASE_DIR / "data" / "debug"))
+TRAINED_MODEL_DIR = os.getenv("TRAINED_MODEL_DIR", str(BASE_DIR / "data" / "train"))
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = get_int_env("MQTT_PORT", 1883)
@@ -134,6 +135,24 @@ APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Bangkok")
 DEFAULT_GROW_CYCLE_DAYS = max(get_int_env("DEFAULT_GROW_CYCLE_DAYS", 14), 1)
 PREDICTION_LOOKBACK_DAYS = max(get_int_env("PREDICTION_LOOKBACK_DAYS", 7), 1)
 PREDICTION_SENSOR_LIMIT = max(get_int_env("PREDICTION_SENSOR_LIMIT", 240), 1)
+HARVEST_MODEL_ENABLED = get_bool_env("HARVEST_MODEL_ENABLED", True)
+HARVEST_MODEL_PATH = os.getenv(
+    "HARVEST_MODEL_PATH",
+    str(Path(TRAINED_MODEL_DIR) / "harvest_baseline_model_v2.joblib"),
+)
+HARVEST_MODEL_METRICS_PATH = os.getenv(
+    "HARVEST_MODEL_METRICS_PATH",
+    str(Path(TRAINED_MODEL_DIR) / "harvest_baseline_metrics_v2.json"),
+)
+HARVEST_MODEL_DEFAULT_LIGHT_LUX = max(
+    get_int_env("HARVEST_MODEL_DEFAULT_LIGHT_LUX", 7500),
+    0,
+)
+HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L = max(
+    get_int_env("HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L", 100),
+    0,
+)
+HARVEST_MODEL_PH_OPTIMAL = float(os.getenv("HARVEST_MODEL_PH_OPTIMAL", "6.0"))
 
 CORS_ALLOW_ORIGINS = [
     origin.strip()

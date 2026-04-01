@@ -229,6 +229,8 @@ export interface DashboardState {
         latest_seed_cycle_id?: string | null
         training_dataset_download_url?: string | null
         template_download_url?: string | null
+        harvest_model_enabled?: boolean
+        harvest_model_path?: string | null
     }
 }
 
@@ -239,6 +241,23 @@ export interface HarvestPredictionPreviewResponse {
         blocking_reasons: string[]
         warnings: string[]
     }
+    prediction?: {
+        days_to_harvest?: number | null
+        predicted_harvest_at?: string | null
+        confidence_score?: number | null
+        uncertainty_days?: number | null
+        baseline_expected_days_to_harvest?: number | null
+        baseline_expected_harvest_at?: string | null
+    }
+    model?: {
+        available?: boolean
+        name?: string | null
+        version?: string | null
+        source?: string | null
+        feature_count?: number | null
+        error?: string | null
+    }
+    feature_vector?: Record<string, number | null>
     feature_bundle: {
         cycle?: {
             cycle_id?: string | null

@@ -16,6 +16,7 @@ from ai.seed_image_series_to_mongo import generate_readings_template
 from ai.predictions import (
     HARVEST_PREDICTION_TYPE,
     assess_harvest_prediction_readiness,
+    build_model_prediction_run,
     build_stub_prediction_run,
     ensure_prediction_indexes,
     get_latest_prediction_run,
@@ -60,6 +61,12 @@ from config import (
     DEFAULT_GROW_CYCLE_DAYS,
     DEBUG_OUTPUT_DIR,
     GROW_CYCLE_COLLECTION,
+    HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L,
+    HARVEST_MODEL_DEFAULT_LIGHT_LUX,
+    HARVEST_MODEL_ENABLED,
+    HARVEST_MODEL_METRICS_PATH,
+    HARVEST_MODEL_PATH,
+    HARVEST_MODEL_PH_OPTIMAL,
     IMAGE_ANALYSIS_COLLECTION,
     IMAGE_ANALYSIS_ARCHIVE_ENABLED,
     IMAGE_ANALYSIS_FORCE_LIGHT_OFF,
@@ -318,6 +325,8 @@ def get_dashboard_state():
             ).get("cycle_id"),
             "training_dataset_download_url": "/model-data/training-dataset/download?allow_missing_sensor=true",
             "template_download_url": "/model-data/template/download",
+            "harvest_model_enabled": HARVEST_MODEL_ENABLED,
+            "harvest_model_path": HARVEST_MODEL_PATH,
         },
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
@@ -658,9 +667,21 @@ def preview_harvest_prediction(payload: HarvestPredictionRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     readiness = assess_harvest_prediction_readiness(feature_bundle)
+    prediction_run = build_model_prediction_run(
+        feature_bundle,
+        model_path=HARVEST_MODEL_PATH,
+        metrics_path=HARVEST_MODEL_METRICS_PATH,
+        timezone_name=APP_TIMEZONE,
+        default_light_lux=HARVEST_MODEL_DEFAULT_LIGHT_LUX,
+        default_fertilizer_mg_l=HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L,
+        optimal_ph=HARVEST_MODEL_PH_OPTIMAL,
+    ) if HARVEST_MODEL_ENABLED else build_stub_prediction_run(feature_bundle)
     return {
         "prediction_type": HARVEST_PREDICTION_TYPE,
         "readiness": readiness,
+        "prediction": prediction_run.get("prediction"),
+        "model": prediction_run.get("model"),
+        "feature_vector": prediction_run.get("feature_vector"),
         "feature_bundle": feature_bundle,
     }
 
@@ -680,7 +701,18 @@ def create_harvest_prediction_stub(payload: HarvestPredictionRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    document = build_stub_prediction_run(feature_bundle)
+    if HARVEST_MODEL_ENABLED:
+        document = build_model_prediction_run(
+            feature_bundle,
+            model_path=HARVEST_MODEL_PATH,
+            metrics_path=HARVEST_MODEL_METRICS_PATH,
+            timezone_name=APP_TIMEZONE,
+            default_light_lux=HARVEST_MODEL_DEFAULT_LIGHT_LUX,
+            default_fertilizer_mg_l=HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L,
+            optimal_ph=HARVEST_MODEL_PH_OPTIMAL,
+        )
+    else:
+        document = build_stub_prediction_run(feature_bundle)
     stored_document = store_prediction_run(prediction_collection, document)
     return {"prediction": serialize_document(stored_document)}
 

@@ -20,7 +20,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260401w";
+} from "./api.js?v=20260401x";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -302,7 +302,7 @@ function createLayout() {
                             <div class="panel-header">
                                 <div class="panel-title">
                                     <h2>Predict Harvest</h2>
-                                    <p>เช็กความพร้อมของข้อมูลและ baseline ก่อนนำโมเดลจริงเข้ามาใช้</p>
+                                    <p>ใช้โมเดล baseline จาก Colab เพื่อทำนายวันเก็บเกี่ยวจาก coverage, temp และ pH ปัจจุบัน</p>
                                 </div>
                                 <button id="prediction-preview-button" class="button-primary" type="button">
                                     Predict Harvest
@@ -311,7 +311,7 @@ function createLayout() {
                             <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
                             <div id="prediction-preview-copy" class="rule-card rule-empty">
                                 ยังไม่มี prediction preview
-                                กด Predict Harvest เพื่อดู readiness ของข้อมูลและ baseline วันเก็บเกี่ยวจากโครง feature ปัจจุบัน
+                                กด Predict Harvest เพื่อให้ backend โหลดโมเดลจริงและคำนวณวันเก็บเกี่ยวจากข้อมูลปัจจุบัน
                             </div>
                         </div>
                     </section>
@@ -1101,42 +1101,47 @@ function renderPredictionPreview(state) {
     const readiness = predictionPreview.readiness;
     const modelInput = predictionPreview.feature_bundle?.model_input ?? {};
     const cycleSnapshot = predictionPreview.feature_bundle?.cycle ?? {};
+    const prediction = predictionPreview.prediction ?? {};
+    const model = predictionPreview.model ?? {};
     const readinessClass = readiness.ready ? "active" : "danger";
+    const predictedDays = prediction.days_to_harvest;
+    const confidencePercent = prediction.confidence_score != null
+        ? Math.round(prediction.confidence_score * 100)
+        : null;
 
     summaryContainer.innerHTML = `
         <article class="summary-card">
-            <span class="card-label">Readiness</span>
-            <strong>${readiness.ready ? "READY" : "BLOCKED"}</strong>
-            <span class="helper-text">${readiness.blocking_reasons.length} blocking reason(s)</span>
+            <span class="card-label">Model Result</span>
+            <strong>${predictedDays != null ? `${formatNumber(predictedDays, 1)} days` : model.available ? "-" : "No model"}</strong>
+            <span class="helper-text">${predictedDays != null ? "คาดว่าเหลืออีกกี่วันจะเก็บเกี่ยวได้" : "รอ readiness หรือแก้ model path ก่อน"}</span>
         </article>
         <article class="summary-card">
-            <span class="card-label">Baseline Days Left</span>
-            <strong>${formatNumber(modelInput.baseline_expected_days_to_harvest, 0)}</strong>
-            <span class="helper-text">ค่าประมาณตาม cycle plan ก่อนมีโมเดลจริง</span>
+            <span class="card-label">Predicted Harvest</span>
+            <strong>${escapeHtml(formatTimestamp(prediction.predicted_harvest_at))}</strong>
+            <span class="helper-text">วันที่คาดว่าจะเก็บเกี่ยวได้จากโมเดล</span>
         </article>
         <article class="summary-card">
-            <span class="card-label">Lookback Window</span>
-            <strong>${formatNumber(modelInput.lookback_days, 0)} days</strong>
+            <span class="card-label">Confidence</span>
+            <strong>${confidencePercent != null ? `${confidencePercent}%` : "-"}</strong>
             <span class="helper-text">
-                ${formatNumber(modelInput.summary_days_available, 0)} summary days •
-                ${formatNumber(modelInput.sensor_points_available, 0)} sensor points
+                ${prediction.uncertainty_days != null ? `uncertainty ±${formatNumber(prediction.uncertainty_days, 2)} days` : "ยังไม่มี confidence จากโมเดล"}
             </span>
         </article>
         <article class="summary-card">
             <span class="card-label">Cycle Day</span>
             <strong>${formatNumber(cycleSnapshot.cycle_day_index, 0)} / ${formatNumber(cycleSnapshot.target_harvest_days, 0)}</strong>
-            <span class="helper-text">${escapeHtml(cycleSnapshot.expected_harvest_at ?? "-")}</span>
+            <span class="helper-text">baseline ${formatNumber(modelInput.baseline_expected_days_to_harvest, 0)} days left</span>
         </article>
     `;
 
     copyContainer.innerHTML = `
         <div class="rule-title">
             <div>
-                <strong>Prediction Placeholder</strong>
-                <div class="rule-meta">${escapeHtml(predictionPreview.prediction_type)}</div>
+                <strong>${model.available ? "Baseline Model Prediction" : "Model Unavailable"}</strong>
+                <div class="rule-meta">${escapeHtml(model.name ?? predictionPreview.prediction_type)}</div>
             </div>
             <span class="mini-chip ${readinessClass}">
-                ${readiness.ready ? "Ready for model" : "Needs more data"}
+                ${model.available ? (readiness.ready ? "Predicted" : "Needs more data") : "Fallback"}
             </span>
         </div>
         <div class="history-metrics">
@@ -1145,13 +1150,18 @@ function renderPredictionPreview(state) {
             <span>Coverage ${formatNumber(modelInput.latest_daily_image_coverage_percent ?? modelInput.latest_green_coverage_percent, 2)}%</span>
         </div>
         <p class="helper-text">
-            ตอนนี้ยังไม่มีโมเดลจริง ระบบจึงแสดง readiness และ baseline feature snapshot เพื่อเตรียมเสียบ model ภายหลัง
+            ${model.available
+                ? `โมเดลจาก Colab ถูกโหลดแล้วและใช้ feature ปัจจุบัน ${formatNumber(model.feature_count, 0)} ตัวในการทำนายวันเก็บเกี่ยว`
+                : `backend ยังโหลดโมเดลไม่ได้${model.error ? `: ${escapeHtml(model.error)}` : ""}`}
         </p>
         <div class="rule-meta">
             Blocking: ${escapeHtml(readiness.blocking_reasons.join(" • ") || "none")}
         </div>
         <div class="rule-meta">
             Warnings: ${escapeHtml(readiness.warnings.join(" • ") || "none")}
+        </div>
+        <div class="rule-meta">
+            Predicted harvest: ${escapeHtml(formatTimestamp(prediction.predicted_harvest_at))} • baseline ${formatNumber(prediction.baseline_expected_days_to_harvest, 0)} days
         </div>
     `;
 }
