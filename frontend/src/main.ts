@@ -12,15 +12,13 @@ import {
     importModelDataTemplate,
     previewHarvestPrediction,
     setAutomationRuleEnabled,
-    startAllFertilizerPumps,
     startFertilizerPump,
     startGrowCycle,
     startWaterPump,
-    stopAllFertilizerPumps,
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260401x"
+} from "./api.js?v=20260401aa"
 import type {
     DailySummary,
     DashboardState,
@@ -50,7 +48,8 @@ const CAMERA_REFRESH_MS = 2500
 const CAMERA_RETRY_MS = 3000
 const LIVE_ANALYSIS_REFRESH_MS = 8000
 const LIVE_ANALYSIS_RETRY_MS = 10000
-const DEFAULT_PUMP_DURATION = "5"
+const DEFAULT_WATER_PUMP_LITERS = "1"
+const DEFAULT_FERTILIZER_WATER_LITERS = "10"
 
 let dashboardState: DashboardState | null = null
 let sensorHistory: SensorReading[] = []
@@ -330,11 +329,11 @@ function createLayout(): string {
                 </section>
 
                 <section class="control-grid">
-                    <section class="panel">
+                    <section class="panel light-control-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h3>Light Control</h3>
-                                <p>ควบคุมไฟแบบ manual ได้ทันที และมี schedule แยกด้านล่าง</p>
+                                <p>สั่งไฟแบบ manual หรือวางรอบเปิดปิดอัตโนมัติจาก card เดียวกัน</p>
                             </div>
                             <div class="actions">
                                 <button id="light-on-button" class="button-primary" type="button">
@@ -344,6 +343,33 @@ function createLayout(): string {
                                     Turn Off
                                 </button>
                             </div>
+                            <div class="control-divider"></div>
+                            <section class="schedule-builder">
+                                <div class="schedule-builder-head">
+                                    <div>
+                                        <span class="card-label">Light Schedule</span>
+                                        <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
+                                    </div>
+                                    <span class="helper-text">เลือกวันและช่วงเวลาให้ไฟทำงานอัตโนมัติ</span>
+                                </div>
+                                <form id="light-schedule-form" class="stack">
+                                    <div class="inline-fields">
+                                        <label for="light-on-time">
+                                            On time
+                                            <input id="light-on-time" type="time" value="18:00">
+                                        </label>
+                                        <label for="light-off-time">
+                                            Off time
+                                            <input id="light-off-time" type="time" value="22:00">
+                                        </label>
+                                    </div>
+                                    <div id="light-days" class="day-grid"></div>
+                                    <button class="button-primary" type="submit">
+                                        Add Light Schedule
+                                    </button>
+                                </form>
+                            </section>
+                            <div id="light-rule-list" class="schedule-rule-grid"></div>
                         </div>
                     </section>
 
@@ -351,13 +377,16 @@ function createLayout(): string {
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h3>Water Pump</h3>
-                                <p>กดรันแบบ manual หรือให้ scheduler สั่งแทนตามเวลาที่กำหนด</p>
+                                <p>กรอกลิตรน้ำที่ต้องการ แล้วระบบจะคำนวณเวลาเปิดปั๊มจากอัตราไหลให้อัตโนมัติ</p>
                             </div>
                             <div class="inline-fields">
-                                <label for="manual-water-duration">
-                                    Duration (s)
-                                    <input id="manual-water-duration" min="1" type="number" value="5">
+                                <label for="manual-water-liters">
+                                    ปริมาณน้ำ (L)
+                                    <input id="manual-water-liters" min="0.1" step="0.1" type="number" value="1">
                                 </label>
+                            </div>
+                            <div id="water-pump-helper-copy" class="helper-text">
+                                อัตราไหลปั๊มน้ำ 1 L/min
                             </div>
                             <div class="actions">
                                 <button id="water-start-button" class="button-primary" type="button">
@@ -367,6 +396,39 @@ function createLayout(): string {
                                     Stop Pump
                                 </button>
                             </div>
+                            <div class="control-divider"></div>
+                            <section class="schedule-builder">
+                                <div class="schedule-builder-head">
+                                    <div>
+                                        <span class="card-label">Water Pump Schedule</span>
+                                        <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
+                                    </div>
+                                    <span class="helper-text">กำหนดเวลา วัน และจำนวนลิตรที่ต้องการในแต่ละรอบ</span>
+                                </div>
+                                <form id="pump-water-schedule-form" class="stack">
+                                    <div class="inline-fields">
+                                        <label for="pump-water-start-time">
+                                            Start time
+                                            <input id="pump-water-start-time" type="time" value="08:00">
+                                        </label>
+                                        <label for="pump-water-schedule-liters">
+                                            ปริมาณน้ำ (L)
+                                            <input
+                                                id="pump-water-schedule-liters"
+                                                min="0.1"
+                                                step="0.1"
+                                                type="number"
+                                                value="1"
+                                            >
+                                        </label>
+                                    </div>
+                                    <div id="pump-water-days" class="day-grid"></div>
+                                    <button class="button-primary" type="submit">
+                                        Add Water Pump Schedule
+                                    </button>
+                                </form>
+                            </section>
+                            <div id="pump-water-rule-list" class="schedule-rule-grid"></div>
                         </div>
                     </section>
                 </section>
@@ -376,93 +438,13 @@ function createLayout(): string {
                         <div class="panel-header">
                             <div class="panel-title">
                                 <h2>Fertilizer Pumps</h2>
-                                <p>แต่ละหัวปั๊มสั่งแยกได้ และยังมีปุ่ม start/stop ทั้งชุดให้ใช้เร็ว ๆ</p>
+                                <p>กรอกปริมาณน้ำต่อหัวปั๊ม แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</p>
                             </div>
-                        </div>
-                        <div class="inline-fields">
-                            <label for="fertilizer-all-duration">
-                                Duration for all pumps (s)
-                                <input id="fertilizer-all-duration" min="1" type="number" value="5">
-                            </label>
-                        </div>
-                        <div class="actions">
-                            <button
-                                id="fertilizer-start-all-button"
-                                class="button-primary"
-                                type="button"
-                            >
-                                Start All
-                            </button>
-                            <button
-                                id="fertilizer-stop-all-button"
-                                class="button-danger"
-                                type="button"
-                            >
-                                Stop All
-                            </button>
                         </div>
                         <div id="pump-fertilizer-list" class="fertilizer-grid"></div>
                     </div>
                 </section>
 
-                <section class="schedule-grid">
-                    <section class="panel">
-                        <div class="panel-inner">
-                            <div class="panel-title">
-                                <h2>Light Schedule</h2>
-                                <p>เปิดและปิดไฟอัตโนมัติตามวันและเวลาที่กำหนด</p>
-                            </div>
-                            <form id="light-schedule-form" class="stack">
-                                <div class="inline-fields">
-                                    <label for="light-on-time">
-                                        On time
-                                        <input id="light-on-time" type="time" value="18:00">
-                                    </label>
-                                    <label for="light-off-time">
-                                        Off time
-                                        <input id="light-off-time" type="time" value="22:00">
-                                    </label>
-                                </div>
-                                <div id="light-days" class="day-grid"></div>
-                                <button class="button-primary" type="submit">
-                                    Add Light Schedule
-                                </button>
-                            </form>
-                            <div id="light-rule-list" class="rule-list"></div>
-                        </div>
-                    </section>
-
-                    <section class="panel">
-                        <div class="panel-inner">
-                            <div class="panel-title">
-                                <h2>Water Pump Schedule</h2>
-                                <p>สร้างรอบให้น้ำตามวันและระยะเวลาที่ต้องการ</p>
-                            </div>
-                            <form id="pump-water-schedule-form" class="stack">
-                                <div class="inline-fields">
-                                    <label for="pump-water-start-time">
-                                        Start time
-                                        <input id="pump-water-start-time" type="time" value="08:00">
-                                    </label>
-                                    <label for="pump-water-schedule-duration">
-                                        Duration (s)
-                                        <input
-                                            id="pump-water-schedule-duration"
-                                            min="1"
-                                            type="number"
-                                            value="10"
-                                        >
-                                    </label>
-                                </div>
-                                <div id="pump-water-days" class="day-grid"></div>
-                                <button class="button-primary" type="submit">
-                                    Add Water Pump Schedule
-                                </button>
-                            </form>
-                            <div id="pump-water-rule-list" class="rule-list"></div>
-                        </div>
-                    </section>
-                </section>
             </main>
 
             <div class="message-bar">
@@ -749,6 +731,13 @@ function formatDays(days: string[]): string {
     return days
         .map((day) => DAY_OPTIONS.find(([value]) => value === day)?.[1] ?? day)
         .join(" • ")
+}
+
+function renderDayChips(days: string[]): string {
+    return days
+        .map((day) => DAY_OPTIONS.find(([value]) => value === day)?.[1] ?? day)
+        .map((label) => `<span class="schedule-day-chip">${escapeHtml(label)}</span>`)
+        .join("")
 }
 
 function setMessage(text: string, tone: "info" | "error" = "info"): void {
@@ -1124,18 +1113,31 @@ function renderLightRules(rules: LightRule[]): void {
 
     container.innerHTML = rules.map(
         (rule) => `
-            <article class="rule-card">
-                <div class="rule-title">
+            <article class="schedule-rule-card">
+                <div class="schedule-rule-top">
                     <div>
-                        <strong>On ${escapeHtml(rule.on_time)} / Off ${escapeHtml(rule.off_time)}</strong>
-                        <div class="rule-meta">${escapeHtml(formatDays(rule.days))}</div>
+                        <span class="card-label">Light Schedule</span>
+                        <strong>เปิดปิดไฟอัตโนมัติประจำสัปดาห์</strong>
                     </div>
                     <span class="mini-chip ${rule.enabled ? "active" : "danger"}">
                         ${rule.enabled ? "Enabled" : "Disabled"}
                     </span>
                 </div>
-                <div class="rule-actions">
-                    <label class="day-option">
+                <div class="schedule-day-chips">
+                    ${renderDayChips(rule.days)}
+                </div>
+                <div class="schedule-time-grid">
+                    <div class="schedule-time-box">
+                        <span>On</span>
+                        <strong>${escapeHtml(rule.on_time)}</strong>
+                    </div>
+                    <div class="schedule-time-box">
+                        <span>Off</span>
+                        <strong>${escapeHtml(rule.off_time)}</strong>
+                    </div>
+                </div>
+                <div class="schedule-rule-actions">
+                    <label class="day-option schedule-toggle">
                         <input
                             data-rule-toggle="true"
                             data-rule-id="${escapeHtml(rule.id)}"
@@ -1167,20 +1169,31 @@ function renderPumpWaterRules(rules: PumpWaterRule[]): void {
 
     container.innerHTML = rules.map(
         (rule) => `
-            <article class="rule-card">
-                <div class="rule-title">
+            <article class="schedule-rule-card">
+                <div class="schedule-rule-top">
                     <div>
-                        <strong>Start ${escapeHtml(rule.start_time)}</strong>
-                        <div class="rule-meta">
-                            ${rule.duration_seconds}s • ${escapeHtml(formatDays(rule.days))}
-                        </div>
+                        <span class="card-label">Water Pump Schedule</span>
+                        <strong>รอบให้น้ำอัตโนมัติประจำสัปดาห์</strong>
                     </div>
                     <span class="mini-chip ${rule.enabled ? "active" : "danger"}">
                         ${rule.enabled ? "Enabled" : "Disabled"}
                     </span>
                 </div>
-                <div class="rule-actions">
-                    <label class="day-option">
+                <div class="schedule-day-chips">
+                    ${renderDayChips(rule.days)}
+                </div>
+                <div class="schedule-time-grid">
+                    <div class="schedule-time-box">
+                        <span>Start</span>
+                        <strong>${escapeHtml(rule.start_time)}</strong>
+                    </div>
+                    <div class="schedule-time-box">
+                        <span>Water</span>
+                        <strong>${formatNumber(rule.water_liters, 2)} L</strong>
+                    </div>
+                </div>
+                <div class="schedule-rule-actions">
+                    <label class="day-option schedule-toggle">
                         <input
                             data-rule-toggle="true"
                             data-rule-id="${escapeHtml(rule.id)}"
@@ -1205,8 +1218,16 @@ function renderPumpWaterRules(rules: PumpWaterRule[]): void {
 
 function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
     const existingValues = new Map<number, string>()
+    const dosingConfig = dashboardState?.model_data?.fertilizer_dosing
+    const dosePerTenLiters = dosingConfig?.dose_ml_per_10l ?? null
+    const flowPerMinute = dosingConfig?.pump_flow_ml_per_min ?? null
+    const secondsPerLiter = dosingConfig?.seconds_per_liter ?? null
+    const dosingCopy = dosingConfig
+        ? `สูตร ${formatNumber(dosePerTenLiters, 1)} mL / 10L • ${formatNumber(flowPerMinute, 1)} mL/min • ~${formatNumber(secondsPerLiter, 1)} s/L`
+        : "กรอกลิตรน้ำที่ต้องการให้ระบบคำนวณเวลาเปิดปั๊ม"
+
     document
-        .querySelectorAll<HTMLInputElement>("[data-fertilizer-duration]")
+        .querySelectorAll<HTMLInputElement>("[data-fertilizer-water-liters]")
         .forEach((input) => {
             existingValues.set(Number(input.dataset.pumpId), input.value)
         })
@@ -1215,7 +1236,7 @@ function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
         const statusText = pump.is_running
             ? `RUNNING • ${pump.remaining_seconds}s left`
             : "OFF"
-        const defaultValue = existingValues.get(pump.id) ?? DEFAULT_PUMP_DURATION
+        const defaultValue = existingValues.get(pump.id) ?? DEFAULT_FERTILIZER_WATER_LITERS
 
         return `
             <article class="pump-card">
@@ -1228,17 +1249,19 @@ function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
                         ${statusText}
                     </span>
                 </div>
-                <label for="pump-duration-${pump.id}">
-                    Duration (s)
+                <label for="pump-water-liters-${pump.id}">
+                    ปริมาณน้ำ (L)
                     <input
-                        id="pump-duration-${pump.id}"
-                        data-fertilizer-duration="true"
+                        id="pump-water-liters-${pump.id}"
+                        data-fertilizer-water-liters="true"
                         data-pump-id="${pump.id}"
-                        min="1"
+                        min="0.1"
+                        step="0.1"
                         type="number"
                         value="${escapeHtml(defaultValue)}"
                     >
                 </label>
+                <div class="helper-text">${escapeHtml(dosingCopy)}</div>
                 <div class="pump-actions">
                     <button
                         class="button-primary"
@@ -1260,6 +1283,22 @@ function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
             </article>
         `
     }).join("")
+}
+
+function renderWaterPumpHelper(state: DashboardState): void {
+    const helper = document.getElementById("water-pump-helper-copy")
+    if (!helper) {
+        return
+    }
+
+    const config = state.model_data?.water_pump_dosing
+    const flow = config?.pump_flow_l_per_min
+    const secondsPerLiter = config?.seconds_per_liter
+    const remainingLiters = state.actuators.pump_water.remaining_liters
+
+    helper.textContent = state.actuators.pump_water.is_running
+        ? `กำลังจ่ายน้ำอีกประมาณ ${formatNumber(remainingLiters, 2)} L • ${formatNumber(flow, 2)} L/min • ~${formatNumber(secondsPerLiter, 1)} s/L`
+        : `อัตราไหล ${formatNumber(flow, 2)} L/min • ระบบคำนวณเวลาให้อัตโนมัติ (~${formatNumber(secondsPerLiter, 1)} s/L)`
 }
 
 function renderPredictionPreview(state: DashboardState): void {
@@ -1764,7 +1803,7 @@ function renderDashboard(state: DashboardState): void {
         ? "RUNNING"
         : "READY"
     $("pump-water-copy").textContent = waterPump.is_running
-        ? `${waterPump.remaining_seconds}s left on GPIO ${waterPump.pin}`
+        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • ${waterPump.remaining_seconds}s on GPIO ${waterPump.pin}`
         : `GPIO ${waterPump.pin} • waiting for manual or scheduled run`
 
     $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
@@ -1779,6 +1818,7 @@ function renderDashboard(state: DashboardState): void {
     renderLightRules(state.automation.light)
     renderPumpWaterRules(state.automation.pump_water)
     renderFertilizerPumps(fertilizer.pumps)
+    renderWaterPumpHelper(state)
     renderSensorCharts(sensorHistory)
     renderDailySummarySection(
         state.daily_summary,
@@ -2075,19 +2115,13 @@ function bindEvents(): void {
 
     $("water-start-button").addEventListener("click", async () => {
         await runAction("Water pump started", async () => {
-            await startWaterPump(readPositiveNumber("manual-water-duration"))
+            await startWaterPump(readPositiveNumber("manual-water-liters"))
         })
     })
 
     $("water-stop-button").addEventListener("click", async () => {
         await runAction("Water pump stopped", async () => {
             await stopWaterPump()
-        })
-    })
-
-    $("fertilizer-start-all-button").addEventListener("click", async () => {
-        await runAction("All fertilizer pumps started", async () => {
-            await startAllFertilizerPumps(readPositiveNumber("fertilizer-all-duration"))
         })
     })
 
@@ -2144,12 +2178,6 @@ function bindEvents(): void {
         }
     })
 
-    $("fertilizer-stop-all-button").addEventListener("click", async () => {
-        await runAction("All fertilizer pumps stopped", async () => {
-            await stopAllFertilizerPumps()
-        })
-    })
-
     $("pump-fertilizer-list").addEventListener("click", async (event) => {
         const target = event.target as HTMLElement
         const button = target.closest<HTMLButtonElement>("[data-pump-action]")
@@ -2163,8 +2191,9 @@ function bindEvents(): void {
         }
 
         if (button.dataset.pumpAction === "start") {
+            const waterLiters = readPositiveNumber(`pump-water-liters-${pumpId}`)
             await runAction(`Fertilizer pump ${pumpId} started`, async () => {
-                await startFertilizerPump(pumpId, readPositiveNumber(`pump-duration-${pumpId}`))
+                await startFertilizerPump(pumpId, waterLiters)
             })
             return
         }
@@ -2208,7 +2237,7 @@ function bindEvents(): void {
         await runAction("Water pump schedule added", async () => {
             await createPumpWaterSchedule({
                 start_time: startTime,
-                duration_seconds: readPositiveNumber("pump-water-schedule-duration"),
+                water_liters: readPositiveNumber("pump-water-schedule-liters"),
                 days,
                 enabled: true,
             })

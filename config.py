@@ -28,6 +28,17 @@ def get_int_env(name: str, default: int) -> int:
         return default
 
 
+def get_float_env(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 def get_bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -124,11 +135,23 @@ LIGHT_PIN = get_int_env("LIGHT_PIN", 19)
 LIGHT_ACTIVE_LOW = get_bool_env("LIGHT_ACTIVE_LOW", True)
 PUMP_WATER_PIN = get_int_env("PUMP_WATER_PIN", 16)
 PUMP_WATER_ACTIVE_LOW = get_bool_env("PUMP_WATER_ACTIVE_LOW", False)
+WATER_PUMP_FLOW_L_PER_MIN = max(
+    get_float_env("WATER_PUMP_FLOW_L_PER_MIN", 1.0),
+    0.0,
+)
 PUMP_FERTILIZER_PINS = get_int_list_env(
     "PUMP_FERTILIZER_PINS",
     [get_int_env("PUMP_FERTILIZER_PIN", 13)],
 )
 PUMP_FERTILIZER_ACTIVE_LOW = get_bool_env("PUMP_FERTILIZER_ACTIVE_LOW", False)
+FERTILIZER_PUMP_FLOW_ML_PER_MIN = max(
+    get_float_env("FERTILIZER_PUMP_FLOW_ML_PER_MIN", 8.0),
+    0.0,
+)
+FERTILIZER_DOSE_ML_PER_10L = max(
+    get_float_env("FERTILIZER_DOSE_ML_PER_10L", 50.0),
+    0.0,
+)
 AUTOMATION_COLLECTION = os.getenv("AUTOMATION_COLLECTION", "automation_rules")
 AUTOMATION_POLL_SECONDS = get_int_env("AUTOMATION_POLL_SECONDS", 5)
 APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Bangkok")

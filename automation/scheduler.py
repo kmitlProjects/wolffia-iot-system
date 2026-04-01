@@ -103,6 +103,7 @@ def serialize_rule(document):
     elif document["device"] == "pump_water":
         serialized["start_time"] = document.get("start_time")
         serialized["duration_seconds"] = document.get("duration_seconds")
+        serialized["water_liters"] = document.get("water_liters")
 
     return serialized
 
@@ -172,6 +173,7 @@ class AutomationScheduler:
         self,
         start_time: str,
         duration_seconds: float,
+        water_liters: float | None,
         days,
         enabled: bool = True,
     ):
@@ -185,6 +187,7 @@ class AutomationScheduler:
             "days": normalize_days(days),
             "start_time": normalize_time_value(start_time),
             "duration_seconds": duration_seconds,
+            "water_liters": float(water_liters) if water_liters is not None else None,
             "last_triggered": {"start": None},
             "created_at": _utcnow(),
             "updated_at": _utcnow(),
@@ -272,9 +275,11 @@ class AutomationScheduler:
 
         try:
             run_pump_water(float(rule.get("duration_seconds", 0)))
+            water_liters = rule.get("water_liters")
             print(
                 f"[scheduler] เปิดปั๊มน้ำตาม rule {rule['_id']} "
-                f"เป็นเวลา {rule.get('duration_seconds')} วินาที"
+                f"{water_liters if water_liters is not None else '-'} ลิตร "
+                f"({rule.get('duration_seconds')} วินาที)"
             )
         except ValueError as exc:
             print(f"[scheduler] ข้าม rule {rule['_id']}: {exc}")

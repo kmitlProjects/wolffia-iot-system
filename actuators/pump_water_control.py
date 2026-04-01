@@ -3,7 +3,7 @@ import threading
 import time
 
 from gpiozero import OutputDevice
-from config import PUMP_WATER_ACTIVE_LOW, PUMP_WATER_PIN
+from config import PUMP_WATER_ACTIVE_LOW, PUMP_WATER_PIN, WATER_PUMP_FLOW_L_PER_MIN
 
 
 _lock = threading.RLock()
@@ -21,12 +21,18 @@ def _build_status():
         elapsed = time.time() - _started_at
         remaining_seconds = max(_duration_seconds - elapsed, 0.0)
 
+    liters_per_second = WATER_PUMP_FLOW_L_PER_MIN / 60.0
+    water_liters = _duration_seconds * liters_per_second if liters_per_second > 0 else None
+    remaining_liters = remaining_seconds * liters_per_second if liters_per_second > 0 else None
+
     return {
         "pin": PUMP_WATER_PIN,
         "active_low": PUMP_WATER_ACTIVE_LOW,
         "is_running": _is_running,
         "duration_seconds": _duration_seconds,
         "remaining_seconds": round(remaining_seconds, 1),
+        "water_liters": round(water_liters, 3) if water_liters is not None else None,
+        "remaining_liters": round(remaining_liters, 3) if remaining_liters is not None else None,
     }
 
 

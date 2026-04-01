@@ -156,6 +156,8 @@ export interface PumpWaterStatus {
     is_running: boolean
     duration_seconds: number
     remaining_seconds: number
+    water_liters?: number | null
+    remaining_liters?: number | null
 }
 
 export interface FertilizerPumpStatus {
@@ -198,6 +200,7 @@ export interface PumpWaterRule {
     days: string[]
     start_time: string
     duration_seconds: number
+    water_liters?: number | null
     created_at?: string | null
     updated_at?: string | null
 }
@@ -231,6 +234,16 @@ export interface DashboardState {
         template_download_url?: string | null
         harvest_model_enabled?: boolean
         harvest_model_path?: string | null
+        water_pump_dosing?: {
+            pump_flow_l_per_min?: number | null
+            seconds_per_liter?: number | null
+        } | null
+        fertilizer_dosing?: {
+            pump_flow_ml_per_min?: number | null
+            dose_ml_per_10l?: number | null
+            dose_ml_per_liter?: number | null
+            seconds_per_liter?: number | null
+        } | null
     }
 }
 
@@ -293,7 +306,7 @@ export interface LightSchedulePayload {
 
 export interface PumpWaterSchedulePayload {
     start_time: string
-    duration_seconds: number
+    water_liters: number
     days: string[]
     enabled: boolean
 }

@@ -42,9 +42,7 @@ from grow_cycle import (
 from actuators.ligth import get_light_status, light_off, light_on
 from actuators.pump_fertilizer_control import (
     get_pump_fertilizer_status,
-    run_all_fertilizer_pumps,
     run_fertilizer_pump,
-    stop_all_fertilizer_pumps,
     stop_fertilizer_pump as stop_fertilizer_pump_by_id,
 )
 from actuators.pump_water_control import (
@@ -60,6 +58,8 @@ from config import (
     DAILY_SUMMARY_COLLECTION,
     DEFAULT_GROW_CYCLE_DAYS,
     DEBUG_OUTPUT_DIR,
+    FERTILIZER_DOSE_ML_PER_10L,
+    FERTILIZER_PUMP_FLOW_ML_PER_MIN,
     GROW_CYCLE_COLLECTION,
     HARVEST_MODEL_DEFAULT_FERTILIZER_MG_L,
     HARVEST_MODEL_DEFAULT_LIGHT_LUX,
@@ -83,6 +83,7 @@ from config import (
     SNAPSHOT_POLL_SECONDS,
     SNAPSHOT_TIME,
     SNAPSHOT_TIMEOUT_SECONDS,
+    WATER_PUMP_FLOW_L_PER_MIN,
 )
 from camera.camera import gen_frames, get_camera_status, get_latest_frame_bytes
 
@@ -161,11 +162,13 @@ _LIVE_CAMERA_ANALYSIS_CACHE_SECONDS = 3.0
 
 
 class PumpWaterRequest(BaseModel):
-    duration_seconds: float
+    duration_seconds: float | None = None
+    water_liters: float | None = None
 
 
 class PumpFertilizerRequest(BaseModel):
-    duration_seconds: float
+    duration_seconds: float | None = None
+    water_liters: float | None = None
 
 
 class AutomationBaseRequest(BaseModel):
@@ -180,7 +183,8 @@ class LightAutomationRequest(AutomationBaseRequest):
 
 class PumpWaterAutomationRequest(AutomationBaseRequest):
     start_time: str
-    duration_seconds: float
+    duration_seconds: float | None = None
+    water_liters: float | None = None
 
 
 class AutomationRuleEnabledRequest(BaseModel):
@@ -218,6 +222,80 @@ def serialize_document(document):
     serialized = dict(document)
     serialized["_id"] = str(serialized["_id"])
     return serialized
+
+
+def get_fertilizer_dosing_config():
+    dose_ml_per_liter = FERTILIZER_DOSE_ML_PER_10L / 10.0
+    flow_ml_per_second = FERTILIZER_PUMP_FLOW_ML_PER_MIN / 60.0
+    seconds_per_liter = None
+
+    if flow_ml_per_second > 0:
+        seconds_per_liter = round(dose_ml_per_liter / flow_ml_per_second, 2)
+
+    return {
+        "pump_flow_ml_per_min": round(FERTILIZER_PUMP_FLOW_ML_PER_MIN, 4),
+        "dose_ml_per_10l": round(FERTILIZER_DOSE_ML_PER_10L, 4),
+        "dose_ml_per_liter": round(dose_ml_per_liter, 4),
+        "seconds_per_liter": seconds_per_liter,
+    }
+
+
+def get_water_pump_dosing_config():
+    seconds_per_liter = None
+    if WATER_PUMP_FLOW_L_PER_MIN > 0:
+        seconds_per_liter = round(60.0 / WATER_PUMP_FLOW_L_PER_MIN, 2)
+
+    return {
+        "pump_flow_l_per_min": round(WATER_PUMP_FLOW_L_PER_MIN, 4),
+        "seconds_per_liter": seconds_per_liter,
+    }
+
+
+def resolve_water_pump_duration_seconds(payload: PumpWaterRequest | PumpWaterAutomationRequest):
+    if payload.water_liters is not None:
+        water_liters = float(payload.water_liters)
+        if water_liters <= 0:
+            raise ValueError("water_liters must be greater than 0")
+        if WATER_PUMP_FLOW_L_PER_MIN <= 0:
+            raise ValueError("WATER_PUMP_FLOW_L_PER_MIN must be greater than 0")
+        duration_seconds = water_liters / (WATER_PUMP_FLOW_L_PER_MIN / 60.0)
+        return round(duration_seconds, 2), round(water_liters, 3)
+
+    if payload.duration_seconds is not None:
+        duration_seconds = float(payload.duration_seconds)
+        if duration_seconds <= 0:
+            raise ValueError("duration_seconds must be greater than 0")
+        water_liters = (
+            round(duration_seconds * (WATER_PUMP_FLOW_L_PER_MIN / 60.0), 3)
+            if WATER_PUMP_FLOW_L_PER_MIN > 0
+            else None
+        )
+        return duration_seconds, water_liters
+
+    raise ValueError("water_liters or duration_seconds is required")
+
+
+def resolve_fertilizer_duration_seconds(payload: PumpFertilizerRequest):
+    if payload.water_liters is not None:
+        water_liters = float(payload.water_liters)
+        if water_liters <= 0:
+            raise ValueError("water_liters must be greater than 0")
+        if FERTILIZER_DOSE_ML_PER_10L <= 0:
+            raise ValueError("FERTILIZER_DOSE_ML_PER_10L must be greater than 0")
+        if FERTILIZER_PUMP_FLOW_ML_PER_MIN <= 0:
+            raise ValueError("FERTILIZER_PUMP_FLOW_ML_PER_MIN must be greater than 0")
+
+        dose_ml = water_liters * (FERTILIZER_DOSE_ML_PER_10L / 10.0)
+        duration_seconds = dose_ml / (FERTILIZER_PUMP_FLOW_ML_PER_MIN / 60.0)
+        return round(duration_seconds, 2)
+
+    if payload.duration_seconds is not None:
+        duration_seconds = float(payload.duration_seconds)
+        if duration_seconds <= 0:
+            raise ValueError("duration_seconds must be greater than 0")
+        return duration_seconds
+
+    raise ValueError("water_liters or duration_seconds is required")
 
 
 def get_latest_document():
@@ -327,6 +405,8 @@ def get_dashboard_state():
             "template_download_url": "/model-data/template/download",
             "harvest_model_enabled": HARVEST_MODEL_ENABLED,
             "harvest_model_path": HARVEST_MODEL_PATH,
+            "water_pump_dosing": get_water_pump_dosing_config(),
+            "fertilizer_dosing": get_fertilizer_dosing_config(),
         },
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
@@ -769,9 +849,11 @@ def create_light_automation_rule(payload: LightAutomationRequest):
 @app.post("/automation/pump-water")
 def create_pump_water_automation_rule(payload: PumpWaterAutomationRequest):
     try:
+        duration_seconds, water_liters = resolve_water_pump_duration_seconds(payload)
         rule = automation_scheduler.create_pump_water_rule(
             payload.start_time,
-            payload.duration_seconds,
+            duration_seconds,
+            water_liters,
             payload.days,
             enabled=payload.enabled,
         )
@@ -809,7 +891,8 @@ def turn_light_off():
 @app.post("/actuators/pump-water/start")
 def start_pump_water(payload: PumpWaterRequest):
     try:
-        status = run_pump_water(payload.duration_seconds)
+        duration_seconds, _ = resolve_water_pump_duration_seconds(payload)
+        status = run_pump_water(duration_seconds)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -819,23 +902,13 @@ def start_pump_water(payload: PumpWaterRequest):
 def stop_water_pump():
     return {"pump_water": stop_pump_water()}
 
-@app.post("/actuators/pump-fertilizer/start")
-def start_all_fertilizer_pumps_route(payload: PumpFertilizerRequest):
-    try:
-        status = run_all_fertilizer_pumps(payload.duration_seconds)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return {"pump_fertilizer": status}
-
-@app.post("/actuators/pump-fertilizer/stop")
-def stop_all_fertilizer_pumps_route():
-    return {"pump_fertilizer": stop_all_fertilizer_pumps()}
-
 @app.post("/actuators/pump-fertilizer/{pump_id}/start")
 def start_single_fertilizer_pump(pump_id: int, payload: PumpFertilizerRequest):
     try:
-        status = run_fertilizer_pump(pump_id, payload.duration_seconds)
+        status = run_fertilizer_pump(
+            pump_id,
+            resolve_fertilizer_duration_seconds(payload),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
