@@ -208,7 +208,7 @@ function createLayout(): string {
                 </section>
 
                 <section class="analytics-grid">
-                    <section class="panel">
+                    <section class="panel analysis-hub-panel">
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
@@ -230,7 +230,7 @@ function createLayout(): string {
                         </div>
                     </section>
 
-                    <section class="panel">
+                    <section class="panel timeseries-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h2>Coverage Time Series</h2>
