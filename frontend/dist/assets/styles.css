@@ -390,6 +390,11 @@ label {
     text-align: center;
 }
 
+#prediction-preview-copy {
+    display: grid;
+    gap: 0.7rem;
+}
+
 .metric-card strong,
 .summary-card strong {
     display: block;
@@ -656,6 +661,10 @@ label {
     .analytics-grid {
         grid-column: 1 / -1;
         grid-template-columns: 1.15fr 0.85fr;
+    }
+
+    .prediction-panel {
+        grid-column: 1 / -1;
     }
 
     .schedule-grid {

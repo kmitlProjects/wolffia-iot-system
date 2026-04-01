@@ -32,6 +32,19 @@ export function fetchDailySummaryHistory(limit = 14) {
     return requestJson(`/daily-summary/history?limit=${limit}`);
 }
 
+export function analyzeImageNow() {
+    return requestJson("/image-analysis/analyze-now", {
+        method: "POST",
+    });
+}
+
+export function previewHarvestPrediction(payload = {}) {
+    return requestJson("/predictions/harvest/preview", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
 export function startGrowCycle() {
     return requestJson("/grow-cycles/start", {
         method: "POST",

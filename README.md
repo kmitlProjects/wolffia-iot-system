@@ -64,14 +64,19 @@ The dashboard is fully web-based and includes the live USB camera feed.
 10. Each fertilizer pump can be controlled separately from the web dashboard.
 11. Light and water pump support optional automation schedules from the web dashboard.
 12. The frontend now reads a single `/dashboard-state` endpoint for most data to reduce request volume.
+13. The main dashboard can show the latest raw preview, green mask, and overlay without storing a historical image archive on disk.
 
 ## Prediction Readiness
 
 - `sensor_data` stores raw time-series points with `timestamp`, `temp`, `ph`, and `green_coverage_percent`.
-- `daily_image_analysis` stores one archived image-analysis document per day with green coverage and debug asset URLs.
+- `daily_image_analysis` stores analysis metadata per day without requiring a historical image archive.
 - `daily_summary` aggregates each local day into model-friendly features such as `temp_avg`, `ph_avg`, `green_coverage_avg`, and cycle context.
 - `grow_cycles` stores planting/harvest boundaries so labels and future predictions stay attached to the correct cycle.
 - `prediction_runs` stores preview and stub inference runs so the backend contract is ready before an actual ML model is added.
+- In camera mode, image analysis can temporarily force the grow light off before capture so the training data stays consistent.
+
+For simulation mode, the analysis source can be switched to the ordered files in `test/test_image`.
+This lets the system produce hourly coverage values from the dataset images while keeping the live camera stream separate.
 
 Prediction endpoints:
 
@@ -93,6 +98,42 @@ npm install
 npm run build
 ```
 
+## systemd Service
+
+You can manage the whole stack as one systemd unit because FastAPI already serves the frontend assets.
+
+Install and enable the service:
+
+```bash
+cd /home/pi/Project
+./install_systemd_service.sh
+```
+
+After that, you can keep using the same helper scripts:
+
+```bash
+./start.sh
+./stop.sh
+./restart.sh
+```
+
+Useful commands after installation:
+
+```bash
+sudo systemctl start wolffia-stack
+sudo systemctl stop wolffia-stack
+sudo systemctl restart wolffia-stack
+systemctl status wolffia-stack
+journalctl -u wolffia-stack -f
+```
+
+Remove the service:
+
+```bash
+cd /home/pi/Project
+./uninstall_systemd_service.sh
+```
+
 ## Environment Variables
 
 - `MONGO_URI`
@@ -112,6 +153,11 @@ npm run build
 - `IMAGE_ANALYSIS_REQUEST_TIMEOUT_SECONDS`
 - `CAMERA_DEVICE`
 - `IMAGE_OUTPUT_DIR`
+- `IMAGE_ANALYSIS_SOURCE_MODE`
+- `IMAGE_ANALYSIS_SIMULATION_DIR`
+- `IMAGE_ANALYSIS_ARCHIVE_ENABLED`
+- `IMAGE_ANALYSIS_FORCE_LIGHT_OFF`
+- `IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS`
 - `SNAPSHOT_TIME`
 - `SNAPSHOT_POLL_SECONDS`
 - `SNAPSHOT_TIMEOUT_SECONDS`

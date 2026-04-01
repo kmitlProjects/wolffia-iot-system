@@ -1,0 +1,19 @@
+[Unit]
+Description=Wolffia Pond Backend Stack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/systemd/run_stack.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+SuccessExitStatus=130 143
+
+[Install]
+WantedBy=multi-user.target

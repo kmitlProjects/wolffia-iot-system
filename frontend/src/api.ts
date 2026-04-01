@@ -1,6 +1,7 @@
 import type {
     DailySummary,
     DashboardState,
+    HarvestPredictionPreviewResponse,
     LightSchedulePayload,
     PumpWaterSchedulePayload,
     SensorReading,
@@ -41,6 +42,21 @@ export function fetchSensorHistory(limit = 48): Promise<{ items: SensorReading[]
 
 export function fetchDailySummaryHistory(limit = 14): Promise<{ items: DailySummary[] }> {
     return requestJson(`/daily-summary/history?limit=${limit}`)
+}
+
+export function analyzeImageNow(): Promise<{ analysis: unknown }> {
+    return requestJson("/image-analysis/analyze-now", {
+        method: "POST",
+    })
+}
+
+export function previewHarvestPrediction(
+    payload: { lookback_days?: number; sensor_limit?: number } = {},
+): Promise<HarvestPredictionPreviewResponse> {
+    return requestJson("/predictions/harvest/preview", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    })
 }
 
 export function startGrowCycle(): Promise<{ grow_cycle: unknown }> {

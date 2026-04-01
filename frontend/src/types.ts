@@ -17,13 +17,33 @@ export interface ImageAnalysis {
     _id: string
     date: string
     timestamp?: string | null
-    image_path: string
+    image_path?: string | null
     image_url?: string | null
+    mask_path?: string | null
     mask_url?: string | null
+    overlay_path?: string | null
     overlay_url?: string | null
     green_coverage_percent?: number | null
+    green_pixels?: number | null
+    total_pixels?: number | null
+    analysis_source_mode?: string | null
+    analysis_source_label?: string | null
+    analysis_source_selected_from?: string | null
     freshness_class?: string | null
     confidence?: number | null
+}
+
+export interface ImageAnalysisDebug {
+    captured_at?: string | null
+    source_mode?: string | null
+    source_label?: string | null
+    source_path?: string | null
+    cycle_day_index?: number | null
+    selected_from?: string | null
+    requested_day_index?: number | null
+    raw_url?: string | null
+    mask_url?: string | null
+    overlay_url?: string | null
 }
 
 export interface DailySummary {
@@ -147,10 +167,45 @@ export interface DashboardState {
     }
     sensor: SensorReading | null
     image_analysis: ImageAnalysis | null
+    image_analysis_debug: ImageAnalysisDebug | null
     daily_summary: DailySummary | null
     grow_cycle: GrowCycle | null
     actuators: ActuatorState
     automation: AutomationState
+    prediction_latest?: unknown
+}
+
+export interface HarvestPredictionPreviewResponse {
+    prediction_type: string
+    readiness: {
+        ready: boolean
+        blocking_reasons: string[]
+        warnings: string[]
+    }
+    feature_bundle: {
+        cycle?: {
+            cycle_id?: string | null
+            name?: string | null
+            cycle_day_index?: number | null
+            target_harvest_days?: number | null
+            expected_days_to_harvest?: number | null
+            expected_harvest_at?: string | null
+        }
+        model_input?: {
+            cycle_day_index?: number | null
+            target_harvest_days?: number | null
+            baseline_expected_days_to_harvest?: number | null
+            lookback_days?: number | null
+            summary_days_available?: number | null
+            sensor_points_available?: number | null
+            latest_temp_c?: number | null
+            latest_ph?: number | null
+            latest_green_coverage_percent?: number | null
+            latest_daily_image_coverage_percent?: number | null
+            window_sensor_coverage_trend?: number | null
+            window_daily_image_coverage_trend?: number | null
+        }
+    }
 }
 
 export interface LightSchedulePayload {

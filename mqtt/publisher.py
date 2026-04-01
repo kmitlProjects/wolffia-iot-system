@@ -114,7 +114,7 @@ while True:
 
         coverage_value = None
         try:
-            print("กำลังประมวลผล coverage จากกล้อง ...")
+            print("กำลังประมวลผล coverage จาก image analysis ...")
             analysis = fetch_hourly_coverage()
             coverage_value = analysis.get("green_coverage_percent")
             print(f"green coverage ล่าสุด: {coverage_value}")

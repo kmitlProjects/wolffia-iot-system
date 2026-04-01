@@ -15,6 +15,9 @@ _latest_frame = None
 _frame_sequence = 0
 _last_frame_at = None
 _last_error = None
+_stream_client_count = 0
+_last_demand_at = 0.0
+_IDLE_RELEASE_SECONDS = 3.0
 
 
 def _set_camera_error(message):
@@ -36,12 +39,24 @@ def _set_latest_frame(frame_bytes):
         _frame_condition.notify_all()
 
 
+def _mark_camera_demand():
+    global _last_demand_at
+    _last_demand_at = time.monotonic()
+
+
 def _release_camera_locked():
     global _camera
 
     if _camera is not None:
         _camera.release()
         _camera = None
+
+
+def _camera_should_be_active(now_monotonic: float):
+    if _stream_client_count > 0:
+        return True
+
+    return (now_monotonic - _last_demand_at) <= _IDLE_RELEASE_SECONDS
 
 
 def _open_camera_locked():
@@ -73,11 +88,16 @@ def _open_camera_locked():
 
 def _capture_loop():
     while True:
+        now_monotonic = time.monotonic()
         with _camera_lock:
-            active_camera = _open_camera_locked()
+            if not _camera_should_be_active(now_monotonic):
+                _release_camera_locked()
+                active_camera = None
+            else:
+                active_camera = _open_camera_locked()
 
         if active_camera is None:
-            time.sleep(1)
+            time.sleep(0.25)
             continue
 
         success, frame = active_camera.read()
@@ -117,6 +137,7 @@ def _ensure_capture_thread():
 def get_camera_status():
     with _camera_lock:
         is_open = bool(_camera is not None and _camera.isOpened())
+        stream_client_count = _stream_client_count
 
     return {
         "device": CAMERA_DEVICE,
@@ -124,10 +145,12 @@ def get_camera_status():
         "last_error": _last_error,
         "last_frame_at": _last_frame_at,
         "capture_started": _capture_started,
+        "stream_client_count": stream_client_count,
     }
 
 
 def get_latest_frame_bytes(timeout_seconds: float = 5.0, max_age_seconds: float = 2.0):
+    _mark_camera_demand()
     _ensure_capture_thread()
     deadline = time.monotonic() + max(float(timeout_seconds), 0.1)
 
@@ -154,23 +177,33 @@ def get_latest_frame_bytes(timeout_seconds: float = 5.0, max_age_seconds: float 
 
 
 def gen_frames():
+    global _stream_client_count
+
+    _mark_camera_demand()
     _ensure_capture_thread()
     last_seen_sequence = -1
+    with _camera_lock:
+        _stream_client_count += 1
 
-    while True:
-        with _frame_condition:
-            if _frame_sequence == last_seen_sequence:
-                _frame_condition.wait(timeout=2)
+    try:
+        while True:
+            with _frame_condition:
+                if _frame_sequence == last_seen_sequence:
+                    _frame_condition.wait(timeout=0.5)
 
-            current_sequence = _frame_sequence
-            frame = _latest_frame
+                current_sequence = _frame_sequence
+                frame = _latest_frame
 
-        if frame is None:
-            time.sleep(0.2)
-            continue
+            if frame is None:
+                time.sleep(0.2)
+                continue
 
-        last_seen_sequence = current_sequence
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-        )
+            last_seen_sequence = current_sequence
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+            )
+    finally:
+        with _camera_lock:
+            _stream_client_count = max(_stream_client_count - 1, 0)
+            _mark_camera_demand()

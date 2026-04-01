@@ -19,7 +19,7 @@ TIMESTAMP_PATTERN = re.compile(
 )
 ROI_OVERRIDES = {
     # This frame is rotated significantly compared with the rest of the series.
-    "2026-03-22-19.30_6.png": {
+    "day_12__2026-03-22-19.30_6.png": {
         "x": 1700,
         "y": 1000,
         "width": 1700,

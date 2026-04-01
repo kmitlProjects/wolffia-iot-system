@@ -1,4 +1,5 @@
 import {
+    analyzeImageNow,
     createLightSchedule,
     createPumpWaterSchedule,
     deleteAutomationRule,
@@ -6,6 +7,7 @@ import {
     fetchDashboardState,
     fetchSensorHistory,
     harvestGrowCycle,
+    previewHarvestPrediction,
     setAutomationRuleEnabled,
     startAllFertilizerPumps,
     startFertilizerPump,
@@ -20,7 +22,9 @@ import type {
     DailySummary,
     DashboardState,
     FertilizerPumpStatus,
+    HarvestPredictionPreviewResponse,
     ImageAnalysis,
+    ImageAnalysisDebug,
     LightRule,
     PumpWaterRule,
     SensorReading,
@@ -38,6 +42,8 @@ const DAY_OPTIONS = [
 
 const POLL_VISIBLE_MS = 30000
 const POLL_HIDDEN_MS = 30000
+const CAMERA_REFRESH_MS = 2500
+const CAMERA_RETRY_MS = 3000
 const DEFAULT_PUMP_DURATION = "5"
 
 let dashboardState: DashboardState | null = null
@@ -48,6 +54,11 @@ let messageTimer: number | undefined
 let cameraRetryTimer: number | undefined
 let cameraWanted = true
 let cameraLoaded = false
+let cameraStreamNonce = 0
+let cycleActionPending = false
+let analysisRefreshPending = false
+let predictionPreviewPending = false
+let predictionPreview: HarvestPredictionPreviewResponse | null = null
 
 function $(id: string): HTMLElement {
     const element = document.getElementById(id)
@@ -87,7 +98,7 @@ function createLayout(): string {
                         <p>อัปเดตล่าสุด <strong id="generated-at">-</strong></p>
                         <div class="link-row">
                             <span class="mini-chip">Mobile-first dashboard</span>
-                            <span class="mini-chip">Camera MJPEG คืองานที่หนักสุดของระบบ</span>
+                            <span class="mini-chip">Camera snapshot refresh เบากว่า MJPEG</span>
                         </div>
                     </div>
                 </div>
@@ -98,8 +109,8 @@ function createLayout(): string {
                     <div class="panel-inner">
                         <div class="panel-header">
                             <div class="panel-title">
-                                <h2>Live Camera</h2>
-                                <p>เปิดเฉพาะเวลาต้องดูภาพจริง ๆ เพื่อช่วยลดภาระ Raspberry Pi</p>
+                                <h2>Camera Snapshot</h2>
+                                <p>รีเฟรชภาพเป็นช่วง ๆ แทน MJPEG เพื่อช่วยลดภาระ Raspberry Pi และลด error ใน browser</p>
                             </div>
                             <button id="camera-toggle" class="button-ghost" type="button">
                                 Pause Camera
@@ -184,6 +195,24 @@ function createLayout(): string {
                 <section class="analytics-grid">
                     <section class="panel">
                         <div class="panel-inner">
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <h2>Image Analysis Preview</h2>
+                                    <p>สรุประดับวันพร้อมภาพ raw, binary mask และ overlay เพื่อเช็กว่าการจับพื้นที่สีเขียวตรงกับที่ต้องการหรือยัง</p>
+                                </div>
+                                <button id="analysis-refresh-button" class="button-ghost" type="button">
+                                    Analyze Now
+                                </button>
+                            </div>
+                            <div id="analysis-preview-meta" class="history-metrics"></div>
+                            <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
+                            <div id="analysis-image-strip" class="image-strip"></div>
+                            <div id="daily-summary-list" class="history-list"></div>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-inner">
                             <div class="panel-title">
                                 <h2>Coverage Time Series</h2>
                                 <p>ดูแนวโน้มย้อนหลังของ temp, pH และ green coverage จากข้อมูลรายชั่วโมง</p>
@@ -214,15 +243,22 @@ function createLayout(): string {
                         </div>
                     </section>
 
-                    <section class="panel">
+                    <section class="panel prediction-panel">
                         <div class="panel-inner">
-                            <div class="panel-title">
-                                <h2>Daily Summary</h2>
-                                <p>สรุประดับวันพร้อมรูป archive 1 ชุด และประวัติ coverage สำหรับเช็ก trend</p>
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <h2>Predict Harvest</h2>
+                                    <p>กดเพื่อเช็กว่า feature ที่เก็บมาจนถึงตอนนี้พร้อมส่งเข้าโมเดลหรือยัง และดู baseline ก่อนมีโมเดลจริง</p>
+                                </div>
+                                <button id="prediction-preview-button" class="button-primary" type="button">
+                                    Predict Harvest
+                                </button>
                             </div>
-                            <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
-                            <div id="analysis-image-strip" class="image-strip"></div>
-                            <div id="daily-summary-list" class="history-list"></div>
+                            <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
+                            <div id="prediction-preview-copy" class="rule-card rule-empty">
+                                ยังไม่มี prediction preview
+                                กด Predict Harvest เพื่อดู readiness ของข้อมูลและ baseline วันเก็บเกี่ยวจากโครง feature ปัจจุบัน
+                            </div>
                         </div>
                     </section>
                 </section>
@@ -456,6 +492,75 @@ function getCycleProgress(cycle: DashboardState["grow_cycle"], referenceAt: stri
     return { dayIndex, remainingDays }
 }
 
+function getActiveCycleProgress(): {
+    cycle: DashboardState["grow_cycle"]
+    progress: ReturnType<typeof getCycleProgress>
+} {
+    const cycle = dashboardState?.grow_cycle ?? null
+    if (!cycle || cycle.status !== "active") {
+        return {
+            cycle: null,
+            progress: null,
+        }
+    }
+
+    return {
+        cycle,
+        progress: getCycleProgress(cycle, dashboardState?.meta.generated_at ?? new Date().toISOString()),
+    }
+}
+
+function setCycleActionState(
+    cycle: DashboardState["grow_cycle"],
+    cycleProgress: ReturnType<typeof getCycleProgress>,
+): void {
+    const startButton = $("cycle-start-button") as HTMLButtonElement
+    const harvestButton = $("cycle-harvest-button") as HTMLButtonElement
+    const hasActiveCycle = Boolean(cycle && cycle.status === "active")
+
+    startButton.disabled = cycleActionPending || hasActiveCycle
+    harvestButton.disabled = cycleActionPending || !hasActiveCycle
+
+    if (cycleActionPending) {
+        startButton.textContent = "กำลังบันทึก..."
+        harvestButton.textContent = "กำลังบันทึก..."
+        return
+    }
+
+    startButton.textContent = hasActiveCycle ? "มีรอบปลูกอยู่แล้ว" : "เริ่มปลูก"
+
+    if (!hasActiveCycle) {
+        harvestButton.textContent = "ยังไม่มีรอบปลูก"
+        return
+    }
+
+    if (cycleProgress && cycleProgress.remainingDays > 0) {
+        harvestButton.textContent = `เก็บเกี่ยวก่อนกำหนด (${cycleProgress.remainingDays} วัน)`
+        return
+    }
+
+    harvestButton.textContent = "สิ้นสุดการปลูก"
+}
+
+function buildHarvestConfirmationMessage(
+    cycle: DashboardState["grow_cycle"],
+    cycleProgress: ReturnType<typeof getCycleProgress>,
+): string {
+    const cycleLabel = cycle?.name || cycle?.cycle_id || "รอบปลูกนี้"
+    const targetDays = Number(cycle?.target_harvest_days ?? 14)
+
+    if (cycleProgress && cycleProgress.remainingDays > 0) {
+        return [
+            `${cycleLabel} ยังไม่ครบระยะเก็บเกี่ยว ${targetDays} วัน`,
+            `ตอนนี้อยู่วันที่ ${cycleProgress.dayIndex} และยังเหลือประมาณ ${cycleProgress.remainingDays} วันตามแผน`,
+            "",
+            "ต้องการเก็บเกี่ยวจริงหรือไม่?",
+        ].join("\n")
+    }
+
+    return `${cycleLabel} พร้อมสิ้นสุดการปลูกแล้วใช่หรือไม่?`
+}
+
 function formatDays(days: string[]): string {
     return days
         .map((day) => DAY_OPTIONS.find(([value]) => value === day)?.[1] ?? day)
@@ -639,8 +744,10 @@ function renderSensorCharts(items: SensorReading[]): void {
 function renderDailySummarySection(
     latestSummary: DailySummary | null,
     latestImage: ImageAnalysis | null,
+    latestDebug: ImageAnalysisDebug | null,
     summaries: DailySummary[],
 ): void {
+    const previewMeta = $("analysis-preview-meta")
     const summaryContainer = $("daily-summary-highlights")
     if (!latestSummary) {
         summaryContainer.innerHTML = `
@@ -670,21 +777,55 @@ function renderDailySummarySection(
                 <strong>${formatNumber(latestSummary.temp_avg, 1)} °C</strong>
                 <span class="helper-text">pH ${formatNumber(latestSummary.ph_avg, 2)}</span>
             </article>
+            <article class="summary-card">
+                <span class="card-label">Latest Image Coverage</span>
+                <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
+                <span class="helper-text">
+                    ${formatNumber(latestImage?.green_pixels, 0)} / ${formatNumber(latestImage?.total_pixels, 0)} green pixels
+                </span>
+            </article>
+            <article class="summary-card">
+                <span class="card-label">Analysis Source</span>
+                <strong>${escapeHtml(latestDebug?.source_label ?? latestImage?.analysis_source_label ?? "-")}</strong>
+                <span class="helper-text">
+                    ${escapeHtml(latestDebug?.source_mode ?? latestImage?.analysis_source_mode ?? "unknown")}
+                    ${latestDebug?.cycle_day_index ? ` • day ${escapeHtml(String(latestDebug.cycle_day_index))}` : ""}
+                </span>
+            </article>
         `
     }
 
     const imageStrip = $("analysis-image-strip")
-    const rawUrl = latestImage?.image_url ?? latestSummary?.image_url ?? null
-    const maskUrl = latestImage?.mask_url ?? latestSummary?.mask_url ?? null
-    const overlayUrl = latestImage?.overlay_url ?? latestSummary?.overlay_url ?? null
+    const previewKey = String(
+        latestDebug?.captured_at ||
+        latestImage?.timestamp ||
+        latestSummary?.updated_at ||
+        dashboardState?.meta.generated_at ||
+        Date.now(),
+    )
+    const rawUrl = buildAnalysisAssetUrl(latestDebug?.raw_url, previewKey)
+    const maskUrl = buildAnalysisAssetUrl(latestDebug?.mask_url, previewKey)
+    const overlayUrl = buildAnalysisAssetUrl(latestDebug?.overlay_url, previewKey)
     const imageTiles = [
-        ["Raw Archive", rawUrl],
-        ["Green Mask", maskUrl],
-        ["Overlay", overlayUrl],
+        ["Raw Preview", rawUrl],
+        ["Binary Mask", maskUrl],
+        ["Green Overlay", overlayUrl],
     ].filter(([, url]) => Boolean(url))
 
+    previewMeta.innerHTML = `
+        <span>captured ${escapeHtml(formatTimestamp(latestDebug?.captured_at ?? latestImage?.timestamp))}</span>
+        <span>coverage ${formatNumber(latestImage?.green_coverage_percent, 2)}%</span>
+        <span>source ${escapeHtml(latestDebug?.source_mode ?? latestImage?.analysis_source_mode ?? "-")}</span>
+        <span>day ${escapeHtml(String(latestDebug?.cycle_day_index ?? latestSummary?.cycle_day_index ?? "-"))}</span>
+    `
+
     if (imageTiles.length === 0) {
-        imageStrip.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีรูป archive ของวันล่าสุด</div>`
+        imageStrip.innerHTML = `
+            <div class="rule-card rule-empty">
+                ยังไม่มี preview ล่าสุดของการวิเคราะห์ภาพ
+                กด Analyze Now เพื่อสร้างภาพ raw, mask และ overlay ชุดล่าสุดสำหรับดูบนเว็บ
+            </div>
+        `
     } else {
         imageStrip.innerHTML = imageTiles.map(([label, url]) => `
             <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
@@ -718,23 +859,6 @@ function renderDailySummarySection(
                 <span>Temp ${formatNumber(summary.temp_avg, 1)} °C</span>
                 <span>pH ${formatNumber(summary.ph_avg, 2)}</span>
                 <span>Coverage max ${formatNumber(summary.green_coverage_max, 2)}%</span>
-            </div>
-            <div class="history-links">
-                ${
-                    summary.image_url
-                        ? `<a class="hero-link" href="${escapeHtml(summary.image_url)}" target="_blank" rel="noreferrer">raw</a>`
-                        : ""
-                }
-                ${
-                    summary.mask_url
-                        ? `<a class="hero-link" href="${escapeHtml(summary.mask_url)}" target="_blank" rel="noreferrer">mask</a>`
-                        : ""
-                }
-                ${
-                    summary.overlay_url
-                        ? `<a class="hero-link" href="${escapeHtml(summary.overlay_url)}" target="_blank" rel="noreferrer">overlay</a>`
-                        : ""
-                }
             </div>
         </article>
     `).join("")
@@ -887,12 +1011,182 @@ function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
     }).join("")
 }
 
+function renderPredictionPreview(state: DashboardState): void {
+    const summaryContainer = $("prediction-preview-summary")
+    const copyContainer = $("prediction-preview-copy")
+    const cycle = state.grow_cycle
+    const latestImage = state.image_analysis
+
+    if (!predictionPreview) {
+        summaryContainer.innerHTML = `
+            <article class="summary-card">
+                <span class="card-label">Active Cycle</span>
+                <strong>${cycle?.cycle_id ? escapeHtml(cycle.cycle_id) : "No active cycle"}</strong>
+                <span class="helper-text">
+                    ${cycle?.target_harvest_days ? `target ${escapeHtml(String(cycle.target_harvest_days))} days` : "เริ่มรอบปลูกก่อนเพื่อให้ระบบผูกข้อมูลกับรอบนั้น"}
+                </span>
+            </article>
+            <article class="summary-card">
+                <span class="card-label">Latest Coverage</span>
+                <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
+                <span class="helper-text">ค่าล่าสุดจาก image analysis</span>
+            </article>
+            <article class="summary-card">
+                <span class="card-label">Latest Source Day</span>
+                <strong>${escapeHtml(String(state.image_analysis_debug?.cycle_day_index ?? state.daily_summary?.cycle_day_index ?? "-"))}</strong>
+                <span class="helper-text">${escapeHtml(state.image_analysis?.analysis_source_label ?? "-")}</span>
+            </article>
+        `
+        copyContainer.innerHTML = `
+            ยังไม่มี prediction preview
+            กด Predict Harvest เพื่อดู readiness ของข้อมูล, จำนวน history ที่มี, และ baseline วันเก็บเกี่ยวก่อนเสียบโมเดลจริง
+        `
+        return
+    }
+
+    const readiness = predictionPreview.readiness
+    const modelInput = predictionPreview.feature_bundle?.model_input ?? {}
+    const cycleSnapshot = predictionPreview.feature_bundle?.cycle ?? {}
+    const readinessClass = readiness.ready ? "active" : "danger"
+
+    summaryContainer.innerHTML = `
+        <article class="summary-card">
+            <span class="card-label">Readiness</span>
+            <strong>${readiness.ready ? "READY" : "BLOCKED"}</strong>
+            <span class="helper-text">${readiness.blocking_reasons.length} blocking reason(s)</span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Baseline Days Left</span>
+            <strong>${formatNumber(modelInput.baseline_expected_days_to_harvest, 0)}</strong>
+            <span class="helper-text">ค่าประมาณตาม cycle plan ก่อนมีโมเดลจริง</span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Lookback Window</span>
+            <strong>${formatNumber(modelInput.lookback_days, 0)} days</strong>
+            <span class="helper-text">
+                ${formatNumber(modelInput.summary_days_available, 0)} summary days •
+                ${formatNumber(modelInput.sensor_points_available, 0)} sensor points
+            </span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Cycle Day</span>
+            <strong>${formatNumber(cycleSnapshot.cycle_day_index, 0)} / ${formatNumber(cycleSnapshot.target_harvest_days, 0)}</strong>
+            <span class="helper-text">${escapeHtml(cycleSnapshot.expected_harvest_at ?? "-")}</span>
+        </article>
+    `
+
+    copyContainer.innerHTML = `
+        <div class="rule-title">
+            <div>
+                <strong>Prediction Placeholder</strong>
+                <div class="rule-meta">${escapeHtml(predictionPreview.prediction_type)}</div>
+            </div>
+            <span class="mini-chip ${readinessClass}">
+                ${readiness.ready ? "Ready for model" : "Needs more data"}
+            </span>
+        </div>
+        <div class="history-metrics">
+            <span>Temp ${formatNumber(modelInput.latest_temp_c, 1)} °C</span>
+            <span>pH ${formatNumber(modelInput.latest_ph, 2)}</span>
+            <span>Coverage ${formatNumber(modelInput.latest_daily_image_coverage_percent ?? modelInput.latest_green_coverage_percent, 2)}%</span>
+        </div>
+        <p class="helper-text">
+            ตอนนี้ยังไม่มีโมเดลจริง ระบบจึงแสดง readiness และ baseline feature snapshot เพื่อเตรียมเสียบ model ภายหลัง
+        </p>
+        <div class="rule-meta">
+            Blocking: ${escapeHtml(readiness.blocking_reasons.join(" • ") || "none")}
+        </div>
+        <div class="rule-meta">
+            Warnings: ${escapeHtml(readiness.warnings.join(" • ") || "none")}
+        </div>
+    `
+}
+
+function clearCameraTimer(): void {
+    if (cameraRetryTimer !== undefined) {
+        window.clearTimeout(cameraRetryTimer)
+        cameraRetryTimer = undefined
+    }
+}
+
+function setAnalysisRefreshState(pending: boolean): void {
+    const button = document.getElementById("analysis-refresh-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    const requiresActiveCycle =
+        dashboardState?.image_analysis?.analysis_source_mode === "dataset" &&
+        !dashboardState?.grow_cycle
+
+    button.disabled = pending || requiresActiveCycle
+    button.textContent = pending
+        ? "Analyzing..."
+        : requiresActiveCycle
+            ? "Need Active Cycle"
+            : "Analyze Now"
+    button.title = requiresActiveCycle
+        ? "โหมด dataset ต้องมี active grow cycle ก่อนจึงจะวิเคราะห์ภาพรอบใหม่ได้"
+        : ""
+}
+
+function setPredictionPreviewState(pending: boolean): void {
+    const button = document.getElementById("prediction-preview-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    const requiresActiveCycle = !dashboardState?.grow_cycle
+
+    button.disabled = pending || requiresActiveCycle
+    button.textContent = pending
+        ? "Checking..."
+        : requiresActiveCycle
+            ? "Need Active Cycle"
+            : "Predict Harvest"
+    button.title = requiresActiveCycle
+        ? "เริ่มรอบปลูกก่อน แล้วระบบจึงจะ preview ความพร้อมสำหรับการทำนายวันเก็บเกี่ยวได้"
+        : ""
+}
+
+function buildCameraSnapshotUrl(baseUrl: string): string {
+    cameraStreamNonce += 1
+    const separator = baseUrl.includes("?") ? "&" : "?"
+    return `${baseUrl}${separator}snapshot=${cameraStreamNonce}`
+}
+
+function buildAnalysisAssetUrl(url: string | null | undefined, cacheKey: string): string | null {
+    if (!url) {
+        return null
+    }
+
+    const separator = url.includes("?") ? "&" : "?"
+    return `${url}${separator}v=${encodeURIComponent(cacheKey)}`
+}
+
+function queueNextCameraFrame(delayMs = CAMERA_REFRESH_MS): void {
+    const stream = document.getElementById("camera-stream") as HTMLImageElement | null
+    if (!stream || !cameraWanted || document.hidden) {
+        return
+    }
+
+    clearCameraTimer()
+    cameraRetryTimer = window.setTimeout(() => {
+        if (!cameraWanted || document.hidden) {
+            return
+        }
+
+        const streamUrl = dashboardState?.camera.stream_url ?? "/camera/frame"
+        stream.setAttribute("src", buildCameraSnapshotUrl(streamUrl))
+    }, delayMs)
+}
+
 function syncCamera(): void {
     const stream = document.getElementById("camera-stream") as HTMLImageElement | null
     const overlay = $("camera-overlay")
     const overlayCopy = $("camera-overlay-copy")
     const button = $("camera-toggle")
-    const streamUrl = dashboardState?.camera.stream_url ?? "/video"
+    const streamUrl = dashboardState?.camera.stream_url ?? "/camera/frame"
     const shouldStream = cameraWanted && !document.hidden
 
     if (!stream) {
@@ -900,9 +1194,9 @@ function syncCamera(): void {
     }
 
     if (shouldStream) {
-        if (stream.getAttribute("src") !== streamUrl) {
+        if (!stream.getAttribute("src")) {
             cameraLoaded = false
-            stream.setAttribute("src", streamUrl)
+            stream.setAttribute("src", buildCameraSnapshotUrl(streamUrl))
         }
         button.textContent = "Pause Camera"
         if (cameraLoaded) {
@@ -911,11 +1205,12 @@ function syncCamera(): void {
             overlay.classList.remove("hidden")
             overlayCopy.textContent =
                 dashboardState?.camera.status.last_error ||
-                "กำลังเชื่อมต่อกล้อง..."
+                "กำลังดึง snapshot จากกล้อง..."
         }
         return
     }
 
+    clearCameraTimer()
     stream.removeAttribute("src")
     cameraLoaded = false
     overlay.classList.remove("hidden")
@@ -960,12 +1255,21 @@ function renderDashboard(state: DashboardState): void {
     $("grow-cycle-copy").textContent = cycleProgress
         ? `${cycle?.name || cycle?.cycle_id || "active cycle"} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
         : "ยังไม่มีรอบปลูก active อยู่"
+    setCycleActionState(cycle, cycleProgress)
 
     renderLightRules(state.automation.light)
     renderPumpWaterRules(state.automation.pump_water)
     renderFertilizerPumps(fertilizer.pumps)
     renderSensorCharts(sensorHistory)
-    renderDailySummarySection(state.daily_summary, state.image_analysis, dailySummaryHistory)
+    renderDailySummarySection(
+        state.daily_summary,
+        state.image_analysis,
+        state.image_analysis_debug,
+        dailySummaryHistory,
+    )
+    setAnalysisRefreshState(analysisRefreshPending)
+    renderPredictionPreview(state)
+    setPredictionPreviewState(predictionPreviewPending)
 
     if (!cameraLoaded && state.camera.status.last_error) {
         $("camera-overlay").classList.remove("hidden")
@@ -1058,11 +1362,16 @@ function bindRuleContainer(containerId: string): void {
 }
 
 function bindEvents(): void {
+    setAnalysisRefreshState(false)
+    setPredictionPreviewState(false)
+
     const cameraStream = document.getElementById("camera-stream") as HTMLImageElement | null
     if (cameraStream) {
         cameraStream.addEventListener("load", () => {
             cameraLoaded = true
+            clearCameraTimer()
             $("camera-overlay").classList.add("hidden")
+            queueNextCameraFrame(CAMERA_REFRESH_MS)
         })
 
         cameraStream.addEventListener("error", () => {
@@ -1070,22 +1379,63 @@ function bindEvents(): void {
             $("camera-overlay").classList.remove("hidden")
             $("camera-overlay-copy").textContent =
                 dashboardState?.camera.status.last_error ||
-                "ไม่สามารถโหลดภาพจากกล้องได้ กำลังลองเชื่อมต่อใหม่"
+                "ไม่สามารถโหลด snapshot จากกล้องได้ กำลังลองใหม่"
 
             cameraStream.removeAttribute("src")
-            if (cameraRetryTimer !== undefined) {
-                window.clearTimeout(cameraRetryTimer)
-            }
-
-            cameraRetryTimer = window.setTimeout(() => {
-                syncCamera()
-            }, 1500)
+            clearCameraTimer()
+            queueNextCameraFrame(CAMERA_RETRY_MS)
         })
     }
 
     $("camera-toggle").addEventListener("click", () => {
         cameraWanted = !cameraWanted
         syncCamera()
+    })
+
+    $("analysis-refresh-button").addEventListener("click", async () => {
+        if (analysisRefreshPending) {
+            return
+        }
+
+        analysisRefreshPending = true
+        setAnalysisRefreshState(true)
+        try {
+            await analyzeImageNow()
+            await refreshDashboard(true)
+            setMessage("อัปเดตภาพวิเคราะห์พื้นที่สีเขียวแล้ว")
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "วิเคราะห์ภาพไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            analysisRefreshPending = false
+            setAnalysisRefreshState(false)
+        }
+    })
+
+    $("prediction-preview-button").addEventListener("click", async () => {
+        if (predictionPreviewPending) {
+            return
+        }
+
+        predictionPreviewPending = true
+        setPredictionPreviewState(true)
+        try {
+            predictionPreview = await previewHarvestPrediction({
+                lookback_days: 7,
+                sensor_limit: 240,
+            })
+            if (dashboardState) {
+                renderPredictionPreview(dashboardState)
+            }
+            setMessage("อัปเดต prediction preview แล้ว")
+        } catch (error) {
+            predictionPreview = null
+            const text = error instanceof Error ? error.message : "prediction preview ไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            predictionPreviewPending = false
+            setPredictionPreviewState(false)
+        }
     })
 
     $("light-on-button").addEventListener("click", async () => {
@@ -1119,15 +1469,56 @@ function bindEvents(): void {
     })
 
     $("cycle-start-button").addEventListener("click", async () => {
-        await runAction("เริ่มรอบปลูกแล้ว", async () => {
-            await startGrowCycle()
-        })
+        const activeCycle = dashboardState?.grow_cycle
+        if (cycleActionPending) {
+            return
+        }
+
+        if (activeCycle?.status === "active") {
+            setMessage("มีรอบปลูกที่กำลัง active อยู่แล้ว", "error")
+            return
+        }
+
+        cycleActionPending = true
+        setCycleActionState(activeCycle ?? null, getCycleProgress(activeCycle ?? null, dashboardState?.meta.generated_at ?? new Date().toISOString()))
+        try {
+            await runAction("เริ่มรอบปลูกแล้ว", async () => {
+                await startGrowCycle()
+            })
+        } finally {
+            cycleActionPending = false
+            const { cycle, progress } = getActiveCycleProgress()
+            setCycleActionState(cycle, progress)
+        }
     })
 
     $("cycle-harvest-button").addEventListener("click", async () => {
-        await runAction("สิ้นสุดรอบปลูกแล้ว", async () => {
-            await harvestGrowCycle()
-        })
+        if (cycleActionPending) {
+            return
+        }
+
+        const { cycle, progress } = getActiveCycleProgress()
+        if (!cycle) {
+            setMessage("ยังไม่มีรอบปลูกที่ active อยู่", "error")
+            return
+        }
+
+        if (!window.confirm(buildHarvestConfirmationMessage(cycle, progress))) {
+            setMessage("ยกเลิกการสิ้นสุดรอบปลูกแล้ว")
+            return
+        }
+
+        cycleActionPending = true
+        setCycleActionState(cycle, progress)
+        try {
+            await runAction("สิ้นสุดรอบปลูกแล้ว", async () => {
+                await harvestGrowCycle()
+            })
+        } finally {
+            cycleActionPending = false
+            const nextState = getActiveCycleProgress()
+            setCycleActionState(nextState.cycle, nextState.progress)
+        }
     })
 
     $("fertilizer-stop-all-button").addEventListener("click", async () => {

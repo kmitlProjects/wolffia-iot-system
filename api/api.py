@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -15,9 +16,9 @@ from ai.predictions import (
 )
 from automation.daily_capture import DailyImageScheduler
 from automation.scheduler import AutomationScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -52,6 +53,11 @@ from config import (
     DEBUG_OUTPUT_DIR,
     GROW_CYCLE_COLLECTION,
     IMAGE_ANALYSIS_COLLECTION,
+    IMAGE_ANALYSIS_ARCHIVE_ENABLED,
+    IMAGE_ANALYSIS_FORCE_LIGHT_OFF,
+    IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS,
+    IMAGE_ANALYSIS_SIMULATION_DIR,
+    IMAGE_ANALYSIS_SOURCE_MODE,
     IMAGE_OUTPUT_DIR,
     MONGO_COLLECTION,
     MONGO_DB,
@@ -63,7 +69,7 @@ from config import (
     SNAPSHOT_TIME,
     SNAPSHOT_TIMEOUT_SECONDS,
 )
-from camera.camera import gen_frames, get_camera_status
+from camera.camera import gen_frames, get_camera_status, get_latest_frame_bytes
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
@@ -117,6 +123,11 @@ daily_image_scheduler = DailyImageScheduler(
     IMAGE_OUTPUT_DIR,
     DEBUG_OUTPUT_DIR,
     SNAPSHOT_TIMEOUT_SECONDS,
+    IMAGE_ANALYSIS_SOURCE_MODE,
+    IMAGE_ANALYSIS_SIMULATION_DIR,
+    IMAGE_ANALYSIS_ARCHIVE_ENABLED,
+    IMAGE_ANALYSIS_FORCE_LIGHT_OFF,
+    IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS,
 )
 
 
@@ -179,6 +190,10 @@ def get_latest_document():
 
 def get_latest_image_analysis():
     return daily_image_scheduler.get_latest_analysis()
+
+
+def get_latest_image_analysis_debug():
+    return daily_image_scheduler.get_latest_debug_info()
 
 
 def get_latest_daily_summary():
@@ -248,11 +263,12 @@ def get_dashboard_state():
             "timezone": APP_TIMEZONE,
         },
         "camera": {
-            "stream_url": "/video",
+            "stream_url": "/camera/frame",
             "status": get_camera_status(),
         },
         "sensor": serialize_document(get_latest_document()),
         "image_analysis": serialize_document(get_latest_image_analysis()),
+        "image_analysis_debug": get_latest_image_analysis_debug(),
         "daily_summary": serialize_document(get_latest_daily_summary()),
         "grow_cycle": serialize_document(get_active_grow_cycle()),
         "prediction_latest": serialize_document(get_latest_prediction_document()),
@@ -265,9 +281,15 @@ def startup_event():
     """ตั้งค่าบริการที่ต้องทำตอน API เริ่มทำงาน"""
     print("API จะอ่านค่าล่าสุดจาก MongoDB โดยไม่จับ hardware โดยตรง")
     print("dashboard ใหม่จะถูกเสิร์ฟผ่านหน้าเว็บที่ /")
-    print("กล้องจะถูกสตรีมผ่านหน้าเว็บที่ /video")
-    print("snapshot รายวันและ green coverage พร้อมใช้งานแล้ว")
-    print("ไฟล์ raw/mask/overlay เปิดดูได้ผ่าน /data/*")
+    print("หน้า dashboard จะดึงภาพกล้องแบบ snapshot refresh ผ่าน /camera/frame")
+    print("MJPEG stream เดิมยังเปิดใช้ได้ที่ /video")
+    print("image analysis และ green coverage พร้อมใช้งานแล้ว")
+    if IMAGE_ANALYSIS_FORCE_LIGHT_OFF:
+        print(
+            "image analysis จะปิดไฟชั่วคราวก่อนถ่ายภาพ "
+            f"และรอ {IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS} วินาที"
+        )
+    print("raw/mask/overlay preview ล่าสุดเปิดดูได้ผ่าน /image-analysis/debug/latest/*")
     print("actuator controls พร้อมใช้งานที่ /actuators/*")
     print("automation schedule พร้อมใช้งานที่ /automation/*")
     automation_scheduler.start()
@@ -292,7 +314,13 @@ def shutdown_event():
 def serve_dashboard():
     """หน้าหลักของ frontend ใหม่"""
     if os.path.exists(FRONTEND_INDEX_PATH):
-        return FileResponse(FRONTEND_INDEX_PATH)
+        return FileResponse(
+            FRONTEND_INDEX_PATH,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
 
     return {
         "error": "ไม่พบไฟล์ dashboard",
@@ -357,7 +385,19 @@ def sensor_history(limit: int = 48):
 
 @app.get("/image-analysis/debug/latest")
 def latest_image_analysis_debug():
-    return {"debug": daily_image_scheduler.get_latest_debug_info()}
+    return {"debug": get_latest_image_analysis_debug()}
+
+
+@app.get("/image-analysis/debug/latest/{asset_name}")
+def latest_image_analysis_debug_asset(asset_name: str):
+    asset = daily_image_scheduler.get_latest_debug_asset(asset_name)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="debug asset not found")
+
+    return Response(
+        content=asset["bytes"],
+        media_type=asset["content_type"],
+    )
 
 @app.post("/image-analysis/analyze-now")
 def analyze_image_now():
@@ -366,7 +406,12 @@ def analyze_image_now():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return {"analysis": result}
+    return {
+        "analysis": {
+            **result,
+            "image_analysis": serialize_document(result.get("image_analysis")),
+        }
+    }
 
 @app.post("/image-analysis/capture-now")
 def capture_image_now():
@@ -575,8 +620,51 @@ def stop_single_fertilizer_pump(pump_id: int):
     return {"pump_fertilizer": status}
 
 @app.get("/video")
-def video_feed():
+async def video_feed(request: Request):
+    async def stream_frames():
+        frame_iterator = gen_frames()
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+
+                try:
+                    frame = next(frame_iterator)
+                except StopIteration:
+                    break
+
+                yield frame
+                await asyncio.sleep(0)
+        finally:
+            close = getattr(frame_iterator, "close", None)
+            if callable(close):
+                close()
+
     return StreamingResponse(
-        gen_frames(),
+        stream_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/camera/frame")
+def camera_frame():
+    frame_bytes = get_latest_frame_bytes(
+        timeout_seconds=max(float(SNAPSHOT_TIMEOUT_SECONDS), 1.0),
+        max_age_seconds=5.0,
+    )
+    if frame_bytes is None:
+        raise HTTPException(status_code=503, detail="camera snapshot unavailable")
+
+    return Response(
+        content=frame_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
