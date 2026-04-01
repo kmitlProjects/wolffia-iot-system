@@ -38,6 +38,10 @@ export function analyzeImageNow() {
     });
 }
 
+export function fetchLiveCameraAnalysis(force = false) {
+    return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`);
+}
+
 export function previewHarvestPrediction(payload = {}) {
     return requestJson("/predictions/harvest/preview", {
         method: "POST",

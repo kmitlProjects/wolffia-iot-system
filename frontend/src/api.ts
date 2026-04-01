@@ -3,6 +3,7 @@ import type {
     DashboardState,
     HarvestPredictionPreviewResponse,
     LightSchedulePayload,
+    LiveCameraAnalysis,
     PumpWaterSchedulePayload,
     SensorReading,
 } from "./types.js"
@@ -48,6 +49,12 @@ export function analyzeImageNow(): Promise<{ analysis: unknown }> {
     return requestJson("/image-analysis/analyze-now", {
         method: "POST",
     })
+}
+
+export function fetchLiveCameraAnalysis(
+    force = false,
+): Promise<{ analysis: LiveCameraAnalysis }> {
+    return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`)
 }
 
 export function previewHarvestPrediction(

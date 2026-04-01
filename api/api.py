@@ -1,9 +1,13 @@
 import asyncio
 import os
+import threading
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+import cv2
 from ai.daily_summary import ensure_daily_summary_indexes, summarize_day
+from ai.coverage import analyze_green_coverage_bytes
 from ai.feature_builder import build_harvest_feature_bundle
 from ai.predictions import (
     HARVEST_PREDICTION_TYPE,
@@ -129,6 +133,11 @@ daily_image_scheduler = DailyImageScheduler(
     IMAGE_ANALYSIS_FORCE_LIGHT_OFF,
     IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS,
 )
+_live_camera_analysis_lock = threading.RLock()
+_live_camera_analysis_preview = None
+_live_camera_analysis_assets = {}
+_live_camera_analysis_cached_at = 0.0
+_LIVE_CAMERA_ANALYSIS_CACHE_SECONDS = 3.0
 
 
 class PumpWaterRequest(BaseModel):
@@ -275,6 +284,71 @@ def get_dashboard_state():
         "actuators": get_actuator_status(),
         "automation": get_grouped_automation_rules(),
     }
+
+
+def _encode_preview_asset(extension: str, image):
+    encoded_ok, buffer = cv2.imencode(extension, image)
+    if not encoded_ok:
+        raise RuntimeError(f"cannot encode live analysis asset {extension}")
+    return buffer.tobytes()
+
+
+def build_live_camera_analysis_preview(force_refresh: bool = False):
+    global _live_camera_analysis_preview
+    global _live_camera_analysis_assets
+    global _live_camera_analysis_cached_at
+
+    with _live_camera_analysis_lock:
+        now_monotonic = time.monotonic()
+        if (
+            not force_refresh
+            and _live_camera_analysis_preview is not None
+            and (now_monotonic - _live_camera_analysis_cached_at)
+            <= _LIVE_CAMERA_ANALYSIS_CACHE_SECONDS
+        ):
+            return _live_camera_analysis_preview
+
+        frame_bytes = get_latest_frame_bytes(
+            timeout_seconds=max(float(SNAPSHOT_TIMEOUT_SECONDS), 1.0),
+            max_age_seconds=5.0,
+        )
+        if frame_bytes is None:
+            raise RuntimeError("camera snapshot unavailable for live analysis")
+
+        analysis = analyze_green_coverage_bytes(frame_bytes)
+        raw_bytes = _encode_preview_asset(".jpg", analysis["image"])
+        mask_bytes = _encode_preview_asset(".png", analysis["mask_preview_image"])
+        overlay_bytes = _encode_preview_asset(".jpg", analysis["overlay_image"])
+        captured_at = datetime.now(ZoneInfo(APP_TIMEZONE))
+
+        _live_camera_analysis_assets = {
+            "raw": {
+                "content_type": "image/jpeg",
+                "bytes": raw_bytes,
+            },
+            "mask": {
+                "content_type": "image/png",
+                "bytes": mask_bytes,
+            },
+            "overlay": {
+                "content_type": "image/jpeg",
+                "bytes": overlay_bytes,
+            },
+        }
+        _live_camera_analysis_preview = {
+            "captured_at": captured_at.isoformat(),
+            "green_coverage_percent": analysis["green_coverage_percent"],
+            "green_pixels": analysis["green_pixels"],
+            "total_pixels": analysis["total_pixels"],
+            "coverage_method": analysis["coverage_method"],
+            "coverage_roi": analysis["roi"],
+            "coverage_thresholds": analysis["thresholds"],
+            "raw_url": "/camera/analysis-preview/raw",
+            "mask_url": "/camera/analysis-preview/mask",
+            "overlay_url": "/camera/analysis-preview/overlay",
+        }
+        _live_camera_analysis_cached_at = now_monotonic
+        return _live_camera_analysis_preview
 
 @app.on_event("startup")
 def startup_event():
@@ -663,6 +737,37 @@ def camera_frame():
     return Response(
         content=frame_bytes,
         media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
+@app.get("/camera/analysis-preview")
+def camera_analysis_preview(force: bool = False):
+    try:
+        preview = build_live_camera_analysis_preview(force_refresh=force)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"analysis": preview}
+
+
+@app.get("/camera/analysis-preview/{asset_name}")
+def camera_analysis_preview_asset(asset_name: str):
+    try:
+        build_live_camera_analysis_preview(force_refresh=False)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    asset = _live_camera_analysis_assets.get(asset_name)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="live analysis asset not found")
+
+    return Response(
+        content=asset["bytes"],
+        media_type=asset["content_type"],
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",

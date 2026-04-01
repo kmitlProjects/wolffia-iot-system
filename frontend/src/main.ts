@@ -5,6 +5,7 @@ import {
     deleteAutomationRule,
     fetchDailySummaryHistory,
     fetchDashboardState,
+    fetchLiveCameraAnalysis,
     fetchSensorHistory,
     harvestGrowCycle,
     previewHarvestPrediction,
@@ -26,6 +27,7 @@ import type {
     ImageAnalysis,
     ImageAnalysisDebug,
     LightRule,
+    LiveCameraAnalysis,
     PumpWaterRule,
     SensorReading,
 } from "./types.js"
@@ -44,6 +46,8 @@ const POLL_VISIBLE_MS = 30000
 const POLL_HIDDEN_MS = 30000
 const CAMERA_REFRESH_MS = 2500
 const CAMERA_RETRY_MS = 3000
+const LIVE_ANALYSIS_REFRESH_MS = 5000
+const LIVE_ANALYSIS_RETRY_MS = 7000
 const DEFAULT_PUMP_DURATION = "5"
 
 let dashboardState: DashboardState | null = null
@@ -52,6 +56,7 @@ let dailySummaryHistory: DailySummary[] = []
 let pollTimer: number | undefined
 let messageTimer: number | undefined
 let cameraRetryTimer: number | undefined
+let liveAnalysisTimer: number | undefined
 let cameraWanted = true
 let cameraLoaded = false
 let cameraStreamNonce = 0
@@ -59,6 +64,8 @@ let cycleActionPending = false
 let analysisRefreshPending = false
 let predictionPreviewPending = false
 let predictionPreview: HarvestPredictionPreviewResponse | null = null
+let liveCameraAnalysisPending = false
+let liveCameraAnalysis: LiveCameraAnalysis | null = null
 
 function $(id: string): HTMLElement {
     const element = document.getElementById(id)
@@ -127,6 +134,14 @@ function createLayout(): string {
                                     Camera paused to reduce CPU load.
                                 </p>
                             </div>
+                        </div>
+                        <div class="camera-analysis-block">
+                            <div class="panel-title">
+                                <h3>Live OpenCV Preview</h3>
+                                <p>ประมวลผลจากภาพสดที่แสดงอยู่ตอนนี้โดยไม่บันทึกภาพลง storage ใช้สำหรับดูผลการแยกพื้นที่สีเขียว ณ ตอนนั้น</p>
+                            </div>
+                            <div id="live-analysis-meta" class="history-metrics"></div>
+                            <div id="live-analysis-strip" class="image-strip"></div>
                         </div>
                     </div>
                 </section>
@@ -1164,6 +1179,83 @@ function buildAnalysisAssetUrl(url: string | null | undefined, cacheKey: string)
     return `${url}${separator}v=${encodeURIComponent(cacheKey)}`
 }
 
+function clearLiveAnalysisTimer(): void {
+    if (liveAnalysisTimer !== undefined) {
+        window.clearTimeout(liveAnalysisTimer)
+        liveAnalysisTimer = undefined
+    }
+}
+
+function renderLiveCameraAnalysis(): void {
+    const meta = $("live-analysis-meta")
+    const strip = $("live-analysis-strip")
+
+    if (!liveCameraAnalysis) {
+        meta.innerHTML = `
+            <span>กำลังรอภาพสดสำหรับวิเคราะห์ด้วย OpenCV</span>
+            <span>ไม่มีการบันทึกรูปลง storage</span>
+        `
+        strip.innerHTML = `
+            <div class="rule-card rule-empty">
+                พื้นที่นี้จะแสดงภาพปัจจุบัน, binary mask และ green overlay จากเฟรมสดที่กำลังดูอยู่
+            </div>
+        `
+        return
+    }
+
+    const previewKey = String(liveCameraAnalysis.captured_at || Date.now())
+    const rawUrl = buildAnalysisAssetUrl(liveCameraAnalysis.raw_url, previewKey)
+    const maskUrl = buildAnalysisAssetUrl(liveCameraAnalysis.mask_url, previewKey)
+    const overlayUrl = buildAnalysisAssetUrl(liveCameraAnalysis.overlay_url, previewKey)
+
+    meta.innerHTML = `
+        <span>captured ${escapeHtml(formatTimestamp(liveCameraAnalysis.captured_at))}</span>
+        <span>coverage ${formatNumber(liveCameraAnalysis.green_coverage_percent, 2)}%</span>
+        <span>${formatNumber(liveCameraAnalysis.green_pixels, 0)} / ${formatNumber(liveCameraAnalysis.total_pixels, 0)} green pixels</span>
+    `
+
+    strip.innerHTML = [
+        ["Current Snapshot", rawUrl],
+        ["Binary Mask", maskUrl],
+        ["Green Overlay", overlayUrl],
+    ].map(([label, url]) => `
+        <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
+            <img alt="${escapeHtml(label)}" loading="lazy" src="${escapeHtml(url ?? "")}">
+            <span>${escapeHtml(label)}</span>
+        </a>
+    `).join("")
+}
+
+function queueLiveAnalysisRefresh(delayMs = LIVE_ANALYSIS_REFRESH_MS): void {
+    if (!cameraWanted || document.hidden) {
+        clearLiveAnalysisTimer()
+        return
+    }
+
+    clearLiveAnalysisTimer()
+    liveAnalysisTimer = window.setTimeout(() => {
+        void refreshLiveCameraAnalysis(true)
+    }, delayMs)
+}
+
+async function refreshLiveCameraAnalysis(force = false): Promise<void> {
+    if (liveCameraAnalysisPending || !cameraWanted || document.hidden) {
+        return
+    }
+
+    liveCameraAnalysisPending = true
+    try {
+        const response = await fetchLiveCameraAnalysis(force)
+        liveCameraAnalysis = response.analysis
+        renderLiveCameraAnalysis()
+        queueLiveAnalysisRefresh(LIVE_ANALYSIS_REFRESH_MS)
+    } catch (_error) {
+        queueLiveAnalysisRefresh(LIVE_ANALYSIS_RETRY_MS)
+    } finally {
+        liveCameraAnalysisPending = false
+    }
+}
+
 function queueNextCameraFrame(delayMs = CAMERA_REFRESH_MS): void {
     const stream = document.getElementById("camera-stream") as HTMLImageElement | null
     if (!stream || !cameraWanted || document.hidden) {
@@ -1198,6 +1290,7 @@ function syncCamera(): void {
             cameraLoaded = false
             stream.setAttribute("src", buildCameraSnapshotUrl(streamUrl))
         }
+        queueLiveAnalysisRefresh(600)
         button.textContent = "Pause Camera"
         if (cameraLoaded) {
             overlay.classList.add("hidden")
@@ -1211,6 +1304,7 @@ function syncCamera(): void {
     }
 
     clearCameraTimer()
+    clearLiveAnalysisTimer()
     stream.removeAttribute("src")
     cameraLoaded = false
     overlay.classList.remove("hidden")
@@ -1270,6 +1364,7 @@ function renderDashboard(state: DashboardState): void {
     setAnalysisRefreshState(analysisRefreshPending)
     renderPredictionPreview(state)
     setPredictionPreviewState(predictionPreviewPending)
+    renderLiveCameraAnalysis()
 
     if (!cameraLoaded && state.camera.status.last_error) {
         $("camera-overlay").classList.remove("hidden")
@@ -1364,6 +1459,7 @@ function bindRuleContainer(containerId: string): void {
 function bindEvents(): void {
     setAnalysisRefreshState(false)
     setPredictionPreviewState(false)
+    renderLiveCameraAnalysis()
 
     const cameraStream = document.getElementById("camera-stream") as HTMLImageElement | null
     if (cameraStream) {
@@ -1372,6 +1468,7 @@ function bindEvents(): void {
             clearCameraTimer()
             $("camera-overlay").classList.add("hidden")
             queueNextCameraFrame(CAMERA_REFRESH_MS)
+            void refreshLiveCameraAnalysis(true)
         })
 
         cameraStream.addEventListener("error", () => {
@@ -1383,7 +1480,9 @@ function bindEvents(): void {
 
             cameraStream.removeAttribute("src")
             clearCameraTimer()
+            clearLiveAnalysisTimer()
             queueNextCameraFrame(CAMERA_RETRY_MS)
+            queueLiveAnalysisRefresh(LIVE_ANALYSIS_RETRY_MS)
         })
     }
 
@@ -1597,6 +1696,11 @@ function bindEvents(): void {
 
     document.addEventListener("visibilitychange", () => {
         syncCamera()
+        if (!document.hidden) {
+            void refreshLiveCameraAnalysis(true)
+        } else {
+            clearLiveAnalysisTimer()
+        }
         queueRefresh()
     })
 }
@@ -1612,6 +1716,7 @@ async function bootstrap(): Promise<void> {
     renderDayOptions("pump-water-days", "pump-water-days")
     bindEvents()
     syncCamera()
+    void refreshLiveCameraAnalysis(true)
     await refreshDashboard()
     queueRefresh()
 }

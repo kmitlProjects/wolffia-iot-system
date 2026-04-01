@@ -5,6 +5,7 @@ import {
     deleteAutomationRule,
     fetchDailySummaryHistory,
     fetchDashboardState,
+    fetchLiveCameraAnalysis,
     fetchSensorHistory,
     harvestGrowCycle,
     previewHarvestPrediction,
@@ -33,6 +34,8 @@ const POLL_VISIBLE_MS = 30000;
 const POLL_HIDDEN_MS = 30000;
 const CAMERA_REFRESH_MS = 2500;
 const CAMERA_RETRY_MS = 3000;
+const LIVE_ANALYSIS_REFRESH_MS = 5000;
+const LIVE_ANALYSIS_RETRY_MS = 7000;
 const DEFAULT_PUMP_DURATION = "5";
 
 let dashboardState = null;
@@ -41,6 +44,7 @@ let dailySummaryHistory = [];
 let pollTimer;
 let messageTimer;
 let cameraRetryTimer;
+let liveAnalysisTimer;
 let cameraWanted = true;
 let cameraLoaded = false;
 let cameraStreamNonce = 0;
@@ -48,6 +52,8 @@ let cycleActionPending = false;
 let analysisRefreshPending = false;
 let predictionPreviewPending = false;
 let predictionPreview = null;
+let liveCameraAnalysisPending = false;
+let liveCameraAnalysis = null;
 
 function $(id) {
     const element = document.getElementById(id);
@@ -116,6 +122,14 @@ function createLayout() {
                                     Camera paused to reduce CPU load.
                                 </p>
                             </div>
+                        </div>
+                        <div class="camera-analysis-block">
+                            <div class="panel-title">
+                                <h3>Live OpenCV Preview</h3>
+                                <p>ประมวลผลจากภาพสดที่แสดงอยู่ตอนนี้โดยไม่บันทึกภาพลง storage ใช้สำหรับดูผลการแยกพื้นที่สีเขียว ณ ตอนนั้น</p>
+                            </div>
+                            <div id="live-analysis-meta" class="history-metrics"></div>
+                            <div id="live-analysis-strip" class="image-strip"></div>
                         </div>
                     </div>
                 </section>
@@ -1127,6 +1141,83 @@ function buildAnalysisAssetUrl(url, cacheKey) {
     return `${url}${separator}v=${encodeURIComponent(cacheKey)}`;
 }
 
+function clearLiveAnalysisTimer() {
+    if (liveAnalysisTimer !== undefined) {
+        window.clearTimeout(liveAnalysisTimer);
+        liveAnalysisTimer = undefined;
+    }
+}
+
+function renderLiveCameraAnalysis() {
+    const meta = $("live-analysis-meta");
+    const strip = $("live-analysis-strip");
+
+    if (!liveCameraAnalysis) {
+        meta.innerHTML = `
+            <span>กำลังรอภาพสดสำหรับวิเคราะห์ด้วย OpenCV</span>
+            <span>ไม่มีการบันทึกรูปลง storage</span>
+        `;
+        strip.innerHTML = `
+            <div class="rule-card rule-empty">
+                พื้นที่นี้จะแสดงภาพปัจจุบัน, binary mask และ green overlay จากเฟรมสดที่กำลังดูอยู่
+            </div>
+        `;
+        return;
+    }
+
+    const previewKey = String(liveCameraAnalysis.captured_at || Date.now());
+    const rawUrl = buildAnalysisAssetUrl(liveCameraAnalysis.raw_url, previewKey);
+    const maskUrl = buildAnalysisAssetUrl(liveCameraAnalysis.mask_url, previewKey);
+    const overlayUrl = buildAnalysisAssetUrl(liveCameraAnalysis.overlay_url, previewKey);
+
+    meta.innerHTML = `
+        <span>captured ${escapeHtml(formatTimestamp(liveCameraAnalysis.captured_at))}</span>
+        <span>coverage ${formatNumber(liveCameraAnalysis.green_coverage_percent, 2)}%</span>
+        <span>${formatNumber(liveCameraAnalysis.green_pixels, 0)} / ${formatNumber(liveCameraAnalysis.total_pixels, 0)} green pixels</span>
+    `;
+
+    strip.innerHTML = [
+        ["Current Snapshot", rawUrl],
+        ["Binary Mask", maskUrl],
+        ["Green Overlay", overlayUrl],
+    ].map(([label, url]) => `
+        <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
+            <img alt="${escapeHtml(label)}" loading="lazy" src="${escapeHtml(url ?? "")}">
+            <span>${escapeHtml(label)}</span>
+        </a>
+    `).join("");
+}
+
+function queueLiveAnalysisRefresh(delayMs = LIVE_ANALYSIS_REFRESH_MS) {
+    if (!cameraWanted || document.hidden) {
+        clearLiveAnalysisTimer();
+        return;
+    }
+
+    clearLiveAnalysisTimer();
+    liveAnalysisTimer = window.setTimeout(() => {
+        void refreshLiveCameraAnalysis(true);
+    }, delayMs);
+}
+
+async function refreshLiveCameraAnalysis(force = false) {
+    if (liveCameraAnalysisPending || !cameraWanted || document.hidden) {
+        return;
+    }
+
+    liveCameraAnalysisPending = true;
+    try {
+        const response = await fetchLiveCameraAnalysis(force);
+        liveCameraAnalysis = response.analysis;
+        renderLiveCameraAnalysis();
+        queueLiveAnalysisRefresh(LIVE_ANALYSIS_REFRESH_MS);
+    } catch (_error) {
+        queueLiveAnalysisRefresh(LIVE_ANALYSIS_RETRY_MS);
+    } finally {
+        liveCameraAnalysisPending = false;
+    }
+}
+
 function queueNextCameraFrame(delayMs = CAMERA_REFRESH_MS) {
     const stream = document.getElementById("camera-stream");
     if (!(stream instanceof HTMLImageElement) || !cameraWanted || document.hidden) {
@@ -1161,6 +1252,7 @@ function syncCamera() {
             cameraLoaded = false;
             stream.setAttribute("src", buildCameraSnapshotUrl(streamUrl));
         }
+        queueLiveAnalysisRefresh(600);
         button.textContent = "Pause Camera";
         if (cameraLoaded) {
             overlay.classList.add("hidden");
@@ -1174,6 +1266,7 @@ function syncCamera() {
     }
 
     clearCameraTimer();
+    clearLiveAnalysisTimer();
     stream.removeAttribute("src");
     cameraLoaded = false;
     overlay.classList.remove("hidden");
@@ -1233,6 +1326,7 @@ function renderDashboard(state) {
     setAnalysisRefreshState(analysisRefreshPending);
     renderPredictionPreview(state);
     setPredictionPreviewState(predictionPreviewPending);
+    renderLiveCameraAnalysis();
     if (!cameraLoaded && state.camera.status.last_error) {
         $("camera-overlay").classList.remove("hidden");
         $("camera-overlay-copy").textContent = state.camera.status.last_error;
@@ -1331,6 +1425,7 @@ function bindRuleContainer(containerId) {
 function bindEvents() {
     setAnalysisRefreshState(false);
     setPredictionPreviewState(false);
+    renderLiveCameraAnalysis();
 
     const cameraStream = document.getElementById("camera-stream");
     if (cameraStream instanceof HTMLImageElement) {
@@ -1339,6 +1434,7 @@ function bindEvents() {
             clearCameraTimer();
             $("camera-overlay").classList.add("hidden");
             queueNextCameraFrame(CAMERA_REFRESH_MS);
+            void refreshLiveCameraAnalysis(true);
         });
 
         cameraStream.addEventListener("error", () => {
@@ -1350,7 +1446,9 @@ function bindEvents() {
 
             cameraStream.removeAttribute("src");
             clearCameraTimer();
+            clearLiveAnalysisTimer();
             queueNextCameraFrame(CAMERA_RETRY_MS);
+            queueLiveAnalysisRefresh(LIVE_ANALYSIS_RETRY_MS);
         });
     }
 
@@ -1567,6 +1665,11 @@ function bindEvents() {
 
     document.addEventListener("visibilitychange", () => {
         syncCamera();
+        if (!document.hidden) {
+            void refreshLiveCameraAnalysis(true);
+        } else {
+            clearLiveAnalysisTimer();
+        }
         queueRefresh();
     });
 }
@@ -1582,6 +1685,7 @@ async function bootstrap() {
     renderDayOptions("pump-water-days", "pump-water-days");
     bindEvents();
     syncCamera();
+    void refreshLiveCameraAnalysis(true);
     await refreshDashboard();
     queueRefresh();
 }

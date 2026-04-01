@@ -46,6 +46,29 @@ export interface ImageAnalysisDebug {
     overlay_url?: string | null
 }
 
+export interface LiveCameraAnalysis {
+    captured_at?: string | null
+    green_coverage_percent?: number | null
+    green_pixels?: number | null
+    total_pixels?: number | null
+    coverage_method?: string | null
+    coverage_roi?: {
+        x: number
+        y: number
+        width: number
+        height: number
+    } | null
+    coverage_thresholds?: {
+        h_min: number
+        h_max: number
+        s_min: number
+        v_min: number
+    } | null
+    raw_url?: string | null
+    mask_url?: string | null
+    overlay_url?: string | null
+}
+
 export interface DailySummary {
     _id: string
     date: string

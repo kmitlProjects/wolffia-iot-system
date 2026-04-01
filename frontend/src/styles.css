@@ -273,6 +273,12 @@ label {
     display: none;
 }
 
+.camera-analysis-block {
+    display: grid;
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
 .metric-grid,
 .analytics-grid,
 .chart-grid,
