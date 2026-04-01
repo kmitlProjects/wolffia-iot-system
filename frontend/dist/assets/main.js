@@ -77,23 +77,36 @@ function createLayout() {
             <header class="hero">
                 <div class="hero-header">
                     <div class="hero-copy">
-                        <span class="eyebrow">Wolffia Control Deck</span>
-                        <h1>Pond ops built for your phone, not just your desk.</h1>
+                        <span class="eyebrow">Wolffia Dashboard</span>
+                        <h1>ภาพสด ควบคุมอุปกรณ์ และข้อมูลพร้อมทำโมเดล</h1>
                         <p>
-                            หน้าใหม่ถูกแยกสำหรับมือถือโดยเฉพาะ ลด polling ฝั่งเว็บ
-                            และรวมข้อมูลหลักไว้ที่ state endpoint เดียวเพื่อให้ลื่นขึ้นกว่าเดิม
+                            เรียงข้อมูลตามลำดับการใช้งานจริง:
+                            ดูบ่อ, เช็กค่าล่าสุด, ย้อนดู time series และเตรียมส่งเข้าโมเดล
                         </p>
                     </div>
-                    <div class="hero-meta">
-                        <div class="badge-row">
-                            <span id="connection-badge" class="status-badge">กำลังเชื่อมต่อ</span>
-                            <span id="timezone-chip" class="mini-chip">-</span>
-                        </div>
-                        <p>อัปเดตล่าสุด <strong id="generated-at">-</strong></p>
-                        <div class="link-row">
-                            <span class="mini-chip">Mobile-first dashboard</span>
-                            <span class="mini-chip">Camera snapshot refresh เบากว่า MJPEG</span>
-                        </div>
+                    <div class="hero-summary-grid">
+                        <article class="hero-stat-card">
+                            <span class="card-label">ระบบ</span>
+                            <div class="hero-stat-inline">
+                                <span id="connection-badge" class="status-badge">กำลังเชื่อมต่อ</span>
+                                <span id="timezone-chip" class="mini-chip">-</span>
+                            </div>
+                            <span class="helper-text">สถานะเชื่อมต่อและ timezone ที่ระบบใช้จริง</span>
+                        </article>
+                        <article class="hero-stat-card">
+                            <span class="card-label">อัปเดตล่าสุด</span>
+                            <strong id="generated-at">-</strong>
+                            <span class="helper-text">เวลาที่ state ล่าสุดถูกสร้าง</span>
+                        </article>
+                        <article class="hero-stat-card">
+                            <span class="card-label">โฟลว์ข้อมูล</span>
+                            <div class="hero-feature-list">
+                                <span class="mini-chip">Camera + ROI</span>
+                                <span class="mini-chip">Hourly MongoDB</span>
+                                <span class="mini-chip">Prediction-ready</span>
+                            </div>
+                            <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และตรวจข้อมูลก่อนทำโมเดล</span>
+                        </article>
                     </div>
                 </div>
             </header>
@@ -104,7 +117,7 @@ function createLayout() {
                         <div class="panel-header">
                             <div class="panel-title">
                                 <h2>Camera Snapshot</h2>
-                                <p>รีเฟรชภาพเป็นช่วง ๆ แทน MJPEG เพื่อช่วยลดภาระ Raspberry Pi และลด error ใน browser</p>
+                                <p>รีเฟรชภาพเป็นช่วง ๆ เพื่อดูบ่อสดโดยไม่เพิ่มภาระเครื่องเกินจำเป็น</p>
                             </div>
                             <button id="camera-toggle" class="button-ghost" type="button">
                                 Pause Camera
@@ -138,7 +151,7 @@ function createLayout() {
                     <div class="panel-inner">
                         <div class="panel-title">
                             <h2>Live Snapshot</h2>
-                            <p>ภาพรวมสถานะล่าสุดของระบบจาก MongoDB และ actuator controller</p>
+                            <p>ค่าล่าสุดจาก sensor และสถานะอุปกรณ์ที่ใช้อยู่ตอนนี้</p>
                         </div>
                         <div class="metric-grid">
                             <article class="metric-card">
@@ -201,7 +214,7 @@ function createLayout() {
                             <div class="panel-header">
                                 <div class="panel-title">
                                     <h2>Capture &amp; Model Data</h2>
-                                    <p>ฮับนี้สรุปข้อมูลที่ระบบใช้จริงจากภาพสดด้านบน, ข้อมูลรายชั่วโมงใน MongoDB และ daily rollup ที่จะถูกส่งต่อไปยัง feature builder สำหรับทำโมเดล</p>
+                                    <p>สรุปข้อมูลที่ระบบเก็บจริงและจะถูกใช้ต่อใน feature builder สำหรับโมเดล</p>
                                 </div>
                                 <button id="analysis-refresh-button" class="button-ghost" type="button">
                                     Refresh Hub
@@ -210,11 +223,7 @@ function createLayout() {
                             <div id="analysis-preview-meta" class="history-metrics"></div>
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
-                            <div class="analysis-note">
-                                ภาพ raw, binary mask และ overlay ให้ดูจาก Live OpenCV Preview ด้านบนเท่านั้น
-                                ส่วนการ์ดนี้ใช้สรุปข้อมูลที่ถูกเก็บจริงในระบบเพื่อทำ time series และเตรียม train model
-                            </div>
-                            <div id="daily-summary-list" class="history-list"></div>
+                            <div id="analysis-footer-note" class="analysis-note"></div>
                         </div>
                     </section>
 
@@ -222,7 +231,7 @@ function createLayout() {
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h2>Coverage Time Series</h2>
-                                <p>ดูแนวโน้มย้อนหลังของ temp, pH และ green coverage จากข้อมูลรายชั่วโมง</p>
+                                <p>แนวโน้มย้อนหลังจากข้อมูลรายชั่วโมงของ coverage, อุณหภูมิ และ pH</p>
                             </div>
                             <div class="chart-grid">
                                 <article class="chart-card">
@@ -255,7 +264,7 @@ function createLayout() {
                             <div class="panel-header">
                                 <div class="panel-title">
                                     <h2>Predict Harvest</h2>
-                                    <p>กดเพื่อเช็กว่า feature ที่เก็บมาจนถึงตอนนี้พร้อมส่งเข้าโมเดลหรือยัง และดู baseline ก่อนมีโมเดลจริง</p>
+                                    <p>เช็กความพร้อมของข้อมูลและ baseline ก่อนนำโมเดลจริงเข้ามาใช้</p>
                                 </div>
                                 <button id="prediction-preview-button" class="button-primary" type="button">
                                     Predict Harvest
@@ -837,6 +846,7 @@ function renderDailySummarySection(latestSummary, latestImage, latestDebug, summ
     const previewMeta = $("analysis-preview-meta");
     const summaryContainer = $("daily-summary-highlights");
     const processGrid = $("analysis-process-grid");
+    const footerNote = $("analysis-footer-note");
     const cycle = dashboardState?.grow_cycle ?? null;
     const cycleProgress = getCycleProgress(
         cycle,
@@ -878,16 +888,15 @@ function renderDailySummarySection(latestSummary, latestImage, latestDebug, summ
 
     summaryContainer.innerHTML = `
         <article class="summary-card">
-            <span class="card-label">Live Coverage Now</span>
+            <span class="card-label">Live Coverage</span>
             <strong>${formatNumber(liveCameraAnalysis?.green_coverage_percent, 2)} %</strong>
-            <span class="helper-text">captured ${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))}</span>
-            <span class="helper-text">preview only</span>
+            <span class="helper-text">${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))}</span>
         </article>
         <article class="summary-card">
-            <span class="card-label">Hourly Records In View</span>
-            <strong>${formatNumber(sensorHistory.length, 0)}</strong>
-            <span class="helper-text">${coveragePoints} coverage rows</span>
-            <span class="helper-text">saved ${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</span>
+            <span class="card-label">Latest Hourly Row</span>
+            <strong>${formatNumber(latestCoverageRecord?.green_coverage_percent, 2)} %</strong>
+            <span class="helper-text">Temp ${formatNumber(latestCoverageRecord?.temp, 1)} °C • pH ${formatNumber(latestCoverageRecord?.ph, 2)}</span>
+            <span class="helper-text">${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Coverage Pipeline</span>
@@ -897,28 +906,24 @@ function renderDailySummarySection(latestSummary, latestImage, latestDebug, summ
         </article>
         <article class="summary-card">
             <span class="card-label">Daily Rollup</span>
-            <strong>${escapeHtml(latestSummary?.date ?? "-")}</strong>
-            <span class="helper-text">${latestSummary?.sensor_count ?? 0} hourly points</span>
-            <span class="helper-text">avg ${formatNumber(latestSummary?.green_coverage_avg, 2)}%</span>
+            <strong>${formatNumber(latestSummary?.green_coverage_avg, 2)} %</strong>
+            <span class="helper-text">max ${formatNumber(latestSummary?.green_coverage_max, 2)}%</span>
+            <span class="helper-text">${escapeHtml(latestSummary?.date ?? "-")}</span>
         </article>
         <article class="summary-card">
-            <span class="card-label">Stored Source</span>
-            <strong class="summary-compact-text">${escapeHtml(storedSourceMode)}</strong>
-            <span class="helper-text">cycle day ${escapeHtml(cycleDayLabel)}</span>
-            <span class="helper-text wrap-anywhere">${escapeHtml(sourceLabel)}</span>
+            <span class="card-label">Model Feed</span>
+            <strong>${taggedCoveragePoints} / ${sensorHistory.length}</strong>
+            <span class="helper-text">tagged hourly rows</span>
+            <span class="helper-text">${summaryCount} summary day • cycle ${escapeHtml(cycleDayLabel)}</span>
         </article>
     `;
 
     processGrid.innerHTML = `
         <article class="analysis-stage-card">
             <div class="analysis-stage-head">
-                <span class="mini-chip active">Stage 1</span>
-                <strong>Live Camera + ROI</strong>
+                <span class="mini-chip active">Live Snapshot</span>
+                <strong>${escapeHtml(formatSourceMode("camera"))}</strong>
             </div>
-            <p class="helper-text">
-                ภาพสด, binary mask และ green overlay ที่อยู่ด้านบนเป็นภาพปัจจุบันอย่างเดียว
-                ใช้ดูว่าการตีกรอบผิวน้ำและแยกพื้นที่สีเขียวโอเคหรือยังโดยไม่เก็บรูปลง storage
-            </p>
             <div class="analysis-detail-list">
                 <div class="analysis-detail-row">
                     <span>Captured</span>
@@ -932,114 +937,93 @@ function renderDailySummarySection(latestSummary, latestImage, latestDebug, summ
                     <span>ROI</span>
                     <strong>${escapeHtml(formatRoiSize(liveCameraAnalysis?.coverage_roi ?? latestImage?.coverage_roi))}</strong>
                 </div>
+                <div class="analysis-detail-row">
+                    <span>Source</span>
+                    <strong>preview only</strong>
+                </div>
             </div>
         </article>
         <article class="analysis-stage-card">
             <div class="analysis-stage-head">
-                <span class="mini-chip active">Stage 2</span>
-                <strong>Hourly MongoDB Record</strong>
+                <span class="mini-chip active">Hourly Input</span>
+                <strong>MongoDB Row</strong>
             </div>
-            <p class="helper-text">
-                ทุกหนึ่งชั่วโมงระบบจะเก็บ temp, pH, green_coverage_percent,
-                coverage_method และ coverage_version ลง MongoDB เพื่อทำ time series ต่อ
-            </p>
             <div class="analysis-detail-list">
                 <div class="analysis-detail-row">
-                    <span>Latest Temp / pH</span>
+                    <span>Temp / pH</span>
                     <strong>${formatNumber(latestCoverageRecord?.temp, 1)} °C • pH ${formatNumber(latestCoverageRecord?.ph, 2)}</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Latest Stored Coverage</span>
+                    <span>Stored Coverage</span>
                     <strong>${formatNumber(latestCoverageRecord?.green_coverage_percent, 2)} %</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Saved At</span>
+                    <span>Saved</span>
                     <strong>${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Rows In View</span>
+                    <strong>${coveragePoints} / ${sensorHistory.length}</strong>
                 </div>
             </div>
         </article>
         <article class="analysis-stage-card">
             <div class="analysis-stage-head">
-                <span class="mini-chip active">Stage 3</span>
+                <span class="mini-chip active">Daily Rollup</span>
                 <strong>Daily Rollup</strong>
             </div>
-            <p class="helper-text">
-                ส่วนนี้คือ daily summary ที่จะเอาไปดูแนวโน้มรายวันและใช้ต่อกับ feature builder
-                โดยไม่เอารูปเก่ามาโชว์ซ้ำในหน้าเว็บ
-            </p>
             <div class="analysis-detail-list">
                 <div class="analysis-detail-row">
-                    <span>Latest Day</span>
+                    <span>Day</span>
                     <strong>${escapeHtml(latestSummary?.date ?? "-")}</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Coverage Avg / Max</span>
+                    <span>Avg / Max</span>
                     <strong>${formatNumber(latestSummary?.green_coverage_avg, 2)} % • ${formatNumber(latestSummary?.green_coverage_max, 2)} %</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Daily Image Coverage</span>
+                    <span>Image Coverage</span>
                     <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Hourly Points</span>
+                    <strong>${latestSummary?.sensor_count ?? 0}</strong>
                 </div>
             </div>
         </article>
         <article class="analysis-stage-card">
             <div class="analysis-stage-head">
-                <span class="mini-chip active">Stage 4</span>
+                <span class="mini-chip active">Training Scope</span>
                 <strong>Model Feed Snapshot</strong>
             </div>
-            <p class="helper-text">
-                ตรงนี้บอกว่าหน้าต่างข้อมูลที่เปิดดูอยู่ตอนนี้มีแถวที่ติด method/version พร้อมส่งต่อไปทำ dataset แค่ไหน
-            </p>
             <div class="analysis-detail-list">
                 <div class="analysis-detail-row">
-                    <span>Tagged Hourly Rows</span>
+                    <span>Tagged Rows</span>
                     <strong>${taggedCoveragePoints} / ${sensorHistory.length}</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Summary Days On Screen</span>
+                    <span>Summary Days</span>
                     <strong>${summaryCount}</strong>
                 </div>
                 <div class="analysis-detail-row">
-                    <span>Cycle Context</span>
+                    <span>Cycle</span>
                     <strong>${cycleProgress ? `DAY ${escapeHtml(cycleDayLabel)}` : "IDLE"}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Stored Source</span>
+                    <strong>${escapeHtml(storedSourceMode)}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Source Label</span>
+                    <strong>${escapeHtml(sourceLabel)}</strong>
                 </div>
             </div>
         </article>
     `;
-
-    const listContainer = $("daily-summary-list");
-    if (summaries.length === 0) {
-        listContainer.innerHTML = '<div class="rule-card rule-empty">ยังไม่มีประวัติ daily summary</div>';
-        return;
-    }
-
-    listContainer.innerHTML = summaries.map((summary) => `
-        <article class="history-card">
-            <div class="rule-title">
-                <div>
-                    <strong>${escapeHtml(summary.date)}</strong>
-                    <div class="rule-meta">
-                        ${summary.sensor_count ?? 0} hourly points •
-                        coverage avg ${formatNumber(summary.green_coverage_avg, 2)}%
-                    </div>
-                </div>
-                <span class="mini-chip ${summary.coverage_count ? "active" : "danger"}">
-                    ${summary.coverage_count ?? 0} coverage points
-                </span>
-            </div>
-            <div class="history-metrics">
-                <span>Temp ${formatNumber(summary.temp_avg, 1)} °C</span>
-                <span>pH ${formatNumber(summary.ph_avg, 2)}</span>
-                <span>Coverage avg ${formatNumber(summary.green_coverage_avg, 2)}%</span>
-                <span>Coverage max ${formatNumber(summary.green_coverage_max, 2)}%</span>
-            </div>
-            <div class="history-metrics">
-                <span>Daily image ${formatNumber(summary.daily_image_coverage_percent, 2)}%</span>
-                <span>Cycle day ${escapeHtml(String(summary.cycle_day_index ?? "-"))}</span>
-                <span>Target ${escapeHtml(String(summary.target_harvest_days ?? "-"))} days</span>
-            </div>
-        </article>
-    `).join("");
+    footerNote.innerHTML = `
+        ใช้การ์ดนี้ดูเฉพาะข้อมูลที่ส่งต่อไปทำ dataset และโมเดล
+        ส่วนภาพ raw, binary mask และ overlay ให้ดูจาก Live OpenCV Preview ด้านบน
+    `;
 }
 
 function renderPredictionPreview(state) {
