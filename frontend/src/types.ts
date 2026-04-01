@@ -3,6 +3,8 @@ export interface SensorReading {
     temp?: number | null
     ph?: number | null
     green_coverage_percent?: number | null
+    coverage_method?: string | null
+    coverage_version?: string | null
     timestamp?: string | null
 }
 
@@ -26,6 +28,25 @@ export interface ImageAnalysis {
     green_coverage_percent?: number | null
     green_pixels?: number | null
     total_pixels?: number | null
+    coverage_method?: string | null
+    coverage_version?: string | null
+    coverage_roi?: {
+        x: number
+        y: number
+        width: number
+        height: number
+        corner_radius?: number | null
+        reference_width?: number | null
+        reference_height?: number | null
+    } | null
+    coverage_thresholds?: {
+        h_min?: number | null
+        h_max?: number | null
+        s_min?: number | null
+        v_min?: number | null
+        exg_threshold?: string | null
+        preprocess?: string | null
+    } | null
     analysis_source_mode?: string | null
     analysis_source_label?: string | null
     analysis_source_selected_from?: string | null
@@ -54,18 +75,23 @@ export interface LiveCameraAnalysis {
     image_width?: number | null
     image_height?: number | null
     coverage_method?: string | null
+    coverage_version?: string | null
     coverage_roi?: {
         x: number
         y: number
         width: number
         height: number
         corner_radius?: number | null
+        reference_width?: number | null
+        reference_height?: number | null
     } | null
     coverage_thresholds?: {
-        h_min: number
-        h_max: number
-        s_min: number
-        v_min: number
+        h_min?: number | null
+        h_max?: number | null
+        s_min?: number | null
+        v_min?: number | null
+        exg_threshold?: string | null
+        preprocess?: string | null
     } | null
     raw_url?: string | null
     mask_url?: string | null

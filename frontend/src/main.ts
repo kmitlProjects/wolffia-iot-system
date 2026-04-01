@@ -1,5 +1,4 @@
 import {
-    analyzeImageNow,
     createLightSchedule,
     createPumpWaterSchedule,
     deleteAutomationRule,
@@ -213,16 +212,20 @@ function createLayout(): string {
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
-                                    <h2>Image Analysis Preview</h2>
-                                    <p>สรุประดับวันพร้อมภาพ raw, binary mask และ overlay เพื่อเช็กว่าการจับพื้นที่สีเขียวตรงกับที่ต้องการหรือยัง</p>
+                                    <h2>Capture &amp; Model Data</h2>
+                                    <p>ฮับนี้สรุปข้อมูลที่ระบบใช้จริงจากภาพสดด้านบน, ข้อมูลรายชั่วโมงใน MongoDB และ daily rollup ที่จะถูกส่งต่อไปยัง feature builder สำหรับทำโมเดล</p>
                                 </div>
                                 <button id="analysis-refresh-button" class="button-ghost" type="button">
-                                    Analyze Now
+                                    Refresh Hub
                                 </button>
                             </div>
                             <div id="analysis-preview-meta" class="history-metrics"></div>
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
-                            <div id="analysis-image-strip" class="image-strip"></div>
+                            <div id="analysis-process-grid" class="analysis-process-grid"></div>
+                            <div class="analysis-note">
+                                ภาพ raw, binary mask และ overlay ให้ดูจาก Live OpenCV Preview ด้านบนเท่านั้น
+                                ส่วนการ์ดนี้ใช้สรุปข้อมูลที่ถูกเก็บจริงในระบบเพื่อทำ time series และเตรียม train model
+                            </div>
                             <div id="daily-summary-list" class="history-list"></div>
                         </div>
                     </section>
@@ -479,6 +482,124 @@ function formatDateLabel(value: string | null | undefined): string {
         month: "short",
         day: "numeric",
     }).format(parsed)
+}
+
+function slugToFriendlyLabel(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    return value
+        .split(/[_-]+/)
+        .filter(Boolean)
+        .map((part) => {
+            const upper = part.toUpperCase()
+            if (["LAB", "HSV", "ROI", "EXG", "CLAHE"].includes(upper)) {
+                return upper
+            }
+            if (/^V\d+$/i.test(part)) {
+                return part.toUpperCase()
+            }
+            if (upper === "GAUSSIAN") {
+                return "Gaussian"
+            }
+            if (upper === "BLUR") {
+                return "Blur"
+            }
+            if (upper === "OTSU") {
+                return "Otsu"
+            }
+            return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+        })
+        .join(" ")
+}
+
+function formatCoverageMethod(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    const normalized = value.toLowerCase()
+    if (normalized === "lab_clahe_exg_otsu_v3") {
+        return "OpenCV v3"
+    }
+    if (normalized === "lab_clahe_hsv_exg_v2") {
+        return "OpenCV v2"
+    }
+    return slugToFriendlyLabel(value)
+}
+
+function formatCoverageProcess(
+    thresholds:
+        | LiveCameraAnalysis["coverage_thresholds"]
+        | ImageAnalysis["coverage_thresholds"]
+        | null
+        | undefined,
+): string {
+    if (!thresholds) {
+        return "-"
+    }
+
+    const parts: string[] = []
+    if (thresholds.preprocess) {
+        parts.push(slugToFriendlyLabel(thresholds.preprocess))
+    }
+    if (thresholds.exg_threshold) {
+        parts.push(`ExG ${slugToFriendlyLabel(String(thresholds.exg_threshold))}`)
+    }
+    if (thresholds.h_min !== null && thresholds.h_min !== undefined) {
+        const upper = thresholds.h_max !== null && thresholds.h_max !== undefined
+            ? formatNumber(thresholds.h_max, 0)
+            : "-"
+        parts.push(`H ${formatNumber(thresholds.h_min, 0)}-${upper}`)
+    }
+
+    return parts.join(" • ") || "-"
+}
+
+function formatSourceMode(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    switch (value) {
+        case "camera":
+            return "Camera Live"
+        case "dataset":
+            return "Dataset Simulation"
+        default:
+            return slugToFriendlyLabel(value)
+    }
+}
+
+function formatRoiSize(
+    roi:
+        | LiveCameraAnalysis["coverage_roi"]
+        | ImageAnalysis["coverage_roi"]
+        | null
+        | undefined,
+): string {
+    if (!roi?.width || !roi?.height) {
+        return "-"
+    }
+
+    return `${formatNumber(roi.width, 0)} × ${formatNumber(roi.height, 0)} px`
+}
+
+function countCoveragePoints(items: SensorReading[]): number {
+    return items.filter((item) => item.green_coverage_percent !== null && item.green_coverage_percent !== undefined).length
+}
+
+function countTaggedCoveragePoints(items: SensorReading[]): number {
+    return items.filter((item) => item.coverage_method || item.coverage_version).length
+}
+
+function getLatestCoverageRecord(items: SensorReading[]): SensorReading | null {
+    const reversed = [...items].reverse()
+    return reversed.find(
+        (item) =>
+            item.green_coverage_percent !== null && item.green_coverage_percent !== undefined,
+    ) ?? dashboardState?.sensor ?? null
 }
 
 function getCycleProgress(cycle: DashboardState["grow_cycle"], referenceAt: string): {
@@ -765,91 +886,181 @@ function renderDailySummarySection(
 ): void {
     const previewMeta = $("analysis-preview-meta")
     const summaryContainer = $("daily-summary-highlights")
-    if (!latestSummary) {
-        summaryContainer.innerHTML = `
-            <div class="summary-card">
-                <span class="card-label">Daily Summary</span>
-                <strong>-</strong>
-                <span class="helper-text">ยังไม่มีข้อมูลสรุปรายวัน</span>
-            </div>
-        `
-    } else {
-        summaryContainer.innerHTML = `
-            <article class="summary-card">
-                <span class="card-label">Latest Day</span>
-                <strong>${escapeHtml(latestSummary.date)}</strong>
-                <span class="helper-text">${latestSummary.sensor_count ?? 0} hourly points</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Coverage Avg</span>
-                <strong>${formatNumber(latestSummary.green_coverage_avg, 2)} %</strong>
-                <span class="helper-text">
-                    min ${formatNumber(latestSummary.green_coverage_min, 2)} •
-                    max ${formatNumber(latestSummary.green_coverage_max, 2)}
-                </span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Temp / pH Avg</span>
-                <strong>${formatNumber(latestSummary.temp_avg, 1)} °C</strong>
-                <span class="helper-text">pH ${formatNumber(latestSummary.ph_avg, 2)}</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Latest Image Coverage</span>
-                <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
-                <span class="helper-text">
-                    ${formatNumber(latestImage?.green_pixels, 0)} / ${formatNumber(latestImage?.total_pixels, 0)} green pixels
-                </span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Analysis Source</span>
-                <strong>${escapeHtml(latestDebug?.source_label ?? latestImage?.analysis_source_label ?? "-")}</strong>
-                <span class="helper-text">
-                    ${escapeHtml(latestDebug?.source_mode ?? latestImage?.analysis_source_mode ?? "unknown")}
-                    ${latestDebug?.cycle_day_index ? ` • day ${escapeHtml(String(latestDebug.cycle_day_index))}` : ""}
-                </span>
-            </article>
-        `
-    }
-
-    const imageStrip = $("analysis-image-strip")
-    const previewKey = String(
-        latestDebug?.captured_at ||
-        latestImage?.timestamp ||
-        latestSummary?.updated_at ||
-        dashboardState?.meta.generated_at ||
-        Date.now(),
+    const processGrid = $("analysis-process-grid")
+    const cycle = dashboardState?.grow_cycle ?? null
+    const cycleProgress = getCycleProgress(
+        cycle,
+        dashboardState?.meta.generated_at ?? new Date().toISOString(),
     )
-    const rawUrl = buildAnalysisAssetUrl(latestDebug?.raw_url, previewKey)
-    const maskUrl = buildAnalysisAssetUrl(latestDebug?.mask_url, previewKey)
-    const overlayUrl = buildAnalysisAssetUrl(latestDebug?.overlay_url, previewKey)
-    const imageTiles = [
-        ["Raw Preview", rawUrl],
-        ["Binary Mask", maskUrl],
-        ["Green Overlay", overlayUrl],
-    ].filter(([, url]) => Boolean(url))
+    const latestCoverageRecord = getLatestCoverageRecord(sensorHistory)
+    const coveragePoints = countCoveragePoints(sensorHistory)
+    const taggedCoveragePoints = countTaggedCoveragePoints(sensorHistory)
+    const liveMethod = formatCoverageMethod(
+        liveCameraAnalysis?.coverage_method ??
+        latestCoverageRecord?.coverage_method ??
+        latestImage?.coverage_method,
+    )
+    const liveVersion =
+        liveCameraAnalysis?.coverage_version ??
+        latestCoverageRecord?.coverage_version ??
+        latestImage?.coverage_version ??
+        "-"
+    const pipelineCopy = formatCoverageProcess(
+        liveCameraAnalysis?.coverage_thresholds ??
+        latestImage?.coverage_thresholds,
+    )
+    const storedSourceMode = formatSourceMode(
+        latestImage?.analysis_source_mode ??
+        latestDebug?.source_mode,
+    )
+    const sourceLabel = latestImage?.analysis_source_label ?? latestDebug?.source_label ?? "-"
+    const cycleDayLabel = cycleProgress
+        ? `${cycleProgress.dayIndex}/${cycle?.target_harvest_days ?? "-"}`
+        : String(latestSummary?.cycle_day_index ?? latestDebug?.cycle_day_index ?? "-")
+    const summaryCount = summaries.length
 
     previewMeta.innerHTML = `
-        <span>captured ${escapeHtml(formatTimestamp(latestDebug?.captured_at ?? latestImage?.timestamp))}</span>
-        <span>coverage ${formatNumber(latestImage?.green_coverage_percent, 2)}%</span>
-        <span>source ${escapeHtml(latestDebug?.source_mode ?? latestImage?.analysis_source_mode ?? "-")}</span>
-        <span>day ${escapeHtml(String(latestDebug?.cycle_day_index ?? latestSummary?.cycle_day_index ?? "-"))}</span>
+        <span>live ${escapeHtml(liveMethod)}</span>
+        <span>version ${escapeHtml(String(liveVersion))}</span>
+        <span>stored source ${escapeHtml(storedSourceMode)}</span>
+        <span>${cycleProgress ? `cycle day ${escapeHtml(cycleDayLabel)}` : "ยังไม่มี active cycle"}</span>
     `
 
-    if (imageTiles.length === 0) {
-        imageStrip.innerHTML = `
-            <div class="rule-card rule-empty">
-                ยังไม่มี preview ล่าสุดของการวิเคราะห์ภาพ
-                กด Analyze Now เพื่อสร้างภาพ raw, mask และ overlay ชุดล่าสุดสำหรับดูบนเว็บ
+    summaryContainer.innerHTML = `
+        <article class="summary-card">
+            <span class="card-label">Live Coverage Now</span>
+            <strong>${formatNumber(liveCameraAnalysis?.green_coverage_percent, 2)} %</strong>
+            <span class="helper-text">
+                captured ${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))} • preview only
+            </span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Hourly Records In View</span>
+            <strong>${formatNumber(sensorHistory.length, 0)}</strong>
+            <span class="helper-text">
+                ${coveragePoints} coverage rows • saved ${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}
+            </span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Coverage Pipeline</span>
+            <strong class="summary-compact-text">${escapeHtml(liveMethod)}</strong>
+            <span class="helper-text wrap-anywhere">
+                ${escapeHtml(pipelineCopy)} • ${escapeHtml(String(liveVersion))}
+            </span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Daily Rollup</span>
+            <strong>${escapeHtml(latestSummary?.date ?? "-")}</strong>
+            <span class="helper-text">
+                ${latestSummary?.sensor_count ?? 0} hourly points • avg ${formatNumber(latestSummary?.green_coverage_avg, 2)}%
+            </span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Stored Source</span>
+            <strong class="summary-compact-text">${escapeHtml(storedSourceMode)}</strong>
+            <span class="helper-text wrap-anywhere">
+                ${escapeHtml(sourceLabel)} • cycle day ${escapeHtml(cycleDayLabel)}
+            </span>
+        </article>
+    `
+
+    processGrid.innerHTML = `
+        <article class="analysis-stage-card">
+            <div class="analysis-stage-head">
+                <span class="mini-chip active">Stage 1</span>
+                <strong>Live Camera + ROI</strong>
             </div>
-        `
-    } else {
-        imageStrip.innerHTML = imageTiles.map(([label, url]) => `
-            <a class="image-tile" href="${escapeHtml(url ?? "")}" target="_blank" rel="noreferrer">
-                <img alt="${escapeHtml(label)}" loading="lazy" src="${escapeHtml(url ?? "")}">
-                <span>${escapeHtml(label)}</span>
-            </a>
-        `).join("")
-    }
+            <p class="helper-text">
+                ภาพสด, binary mask และ green overlay ที่อยู่ด้านบนเป็นภาพปัจจุบันอย่างเดียว
+                ใช้ดูว่าการตีกรอบผิวน้ำและแยกพื้นที่สีเขียวโอเคหรือยังโดยไม่เก็บรูปลง storage
+            </p>
+            <div class="analysis-detail-list">
+                <div class="analysis-detail-row">
+                    <span>Captured</span>
+                    <strong>${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Coverage</span>
+                    <strong>${formatNumber(liveCameraAnalysis?.green_coverage_percent, 2)} %</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>ROI</span>
+                    <strong>${escapeHtml(formatRoiSize(liveCameraAnalysis?.coverage_roi ?? latestImage?.coverage_roi))}</strong>
+                </div>
+            </div>
+        </article>
+        <article class="analysis-stage-card">
+            <div class="analysis-stage-head">
+                <span class="mini-chip active">Stage 2</span>
+                <strong>Hourly MongoDB Record</strong>
+            </div>
+            <p class="helper-text">
+                ทุกหนึ่งชั่วโมงระบบจะเก็บ temp, pH, green_coverage_percent,
+                coverage_method และ coverage_version ลง MongoDB เพื่อทำ time series ต่อ
+            </p>
+            <div class="analysis-detail-list">
+                <div class="analysis-detail-row">
+                    <span>Latest Temp / pH</span>
+                    <strong>${formatNumber(latestCoverageRecord?.temp, 1)} °C • pH ${formatNumber(latestCoverageRecord?.ph, 2)}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Latest Stored Coverage</span>
+                    <strong>${formatNumber(latestCoverageRecord?.green_coverage_percent, 2)} %</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Saved At</span>
+                    <strong>${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</strong>
+                </div>
+            </div>
+        </article>
+        <article class="analysis-stage-card">
+            <div class="analysis-stage-head">
+                <span class="mini-chip active">Stage 3</span>
+                <strong>Daily Rollup</strong>
+            </div>
+            <p class="helper-text">
+                ส่วนนี้คือ daily summary ที่จะเอาไปดูแนวโน้มรายวันและใช้ต่อกับ feature builder
+                โดยไม่เอารูปเก่ามาโชว์ซ้ำในหน้าเว็บ
+            </p>
+            <div class="analysis-detail-list">
+                <div class="analysis-detail-row">
+                    <span>Latest Day</span>
+                    <strong>${escapeHtml(latestSummary?.date ?? "-")}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Coverage Avg / Max</span>
+                    <strong>${formatNumber(latestSummary?.green_coverage_avg, 2)} % • ${formatNumber(latestSummary?.green_coverage_max, 2)} %</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Daily Image Coverage</span>
+                    <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
+                </div>
+            </div>
+        </article>
+        <article class="analysis-stage-card">
+            <div class="analysis-stage-head">
+                <span class="mini-chip active">Stage 4</span>
+                <strong>Model Feed Snapshot</strong>
+            </div>
+            <p class="helper-text">
+                ตรงนี้บอกว่าหน้าต่างข้อมูลที่เปิดดูอยู่ตอนนี้มีแถวที่ติด method/version พร้อมส่งต่อไปทำ dataset แค่ไหน
+            </p>
+            <div class="analysis-detail-list">
+                <div class="analysis-detail-row">
+                    <span>Tagged Hourly Rows</span>
+                    <strong>${taggedCoveragePoints} / ${sensorHistory.length}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Summary Days On Screen</span>
+                    <strong>${summaryCount}</strong>
+                </div>
+                <div class="analysis-detail-row">
+                    <span>Cycle Context</span>
+                    <strong>${cycleProgress ? `DAY ${escapeHtml(cycleDayLabel)}` : "IDLE"}</strong>
+                </div>
+            </div>
+        </article>
+    `
 
     const listContainer = $("daily-summary-list")
     if (summaries.length === 0) {
@@ -874,7 +1085,13 @@ function renderDailySummarySection(
             <div class="history-metrics">
                 <span>Temp ${formatNumber(summary.temp_avg, 1)} °C</span>
                 <span>pH ${formatNumber(summary.ph_avg, 2)}</span>
+                <span>Coverage avg ${formatNumber(summary.green_coverage_avg, 2)}%</span>
                 <span>Coverage max ${formatNumber(summary.green_coverage_max, 2)}%</span>
+            </div>
+            <div class="history-metrics">
+                <span>Daily image ${formatNumber(summary.daily_image_coverage_percent, 2)}%</span>
+                <span>Cycle day ${escapeHtml(String(summary.cycle_day_index ?? "-"))}</span>
+                <span>Target ${escapeHtml(String(summary.target_harvest_days ?? "-"))} days</span>
             </div>
         </article>
     `).join("")
@@ -1131,19 +1348,11 @@ function setAnalysisRefreshState(pending: boolean): void {
         return
     }
 
-    const requiresActiveCycle =
-        dashboardState?.image_analysis?.analysis_source_mode === "dataset" &&
-        !dashboardState?.grow_cycle
-
-    button.disabled = pending || requiresActiveCycle
+    button.disabled = pending
     button.textContent = pending
-        ? "Analyzing..."
-        : requiresActiveCycle
-            ? "Need Active Cycle"
-            : "Analyze Now"
-    button.title = requiresActiveCycle
-        ? "โหมด dataset ต้องมี active grow cycle ก่อนจึงจะวิเคราะห์ภาพรอบใหม่ได้"
-        : ""
+        ? "Refreshing..."
+        : "Refresh Hub"
+    button.title = "รีเฟรชภาพสด, ข้อมูลรายชั่วโมง และ daily summary ล่าสุด"
 }
 
 function setPredictionPreviewState(pending: boolean): void {
@@ -1332,6 +1541,9 @@ function renderLiveCameraAnalysis(): void {
         <span>captured ${escapeHtml(formatTimestamp(liveCameraAnalysis.captured_at))}</span>
         <span>coverage ${formatNumber(liveCameraAnalysis.green_coverage_percent, 2)}%</span>
         <span>${formatNumber(liveCameraAnalysis.green_pixels, 0)} / ${formatNumber(liveCameraAnalysis.total_pixels, 0)} green pixels</span>
+        <span>${escapeHtml(formatCoverageMethod(liveCameraAnalysis.coverage_method))}</span>
+        <span>${escapeHtml(formatCoverageProcess(liveCameraAnalysis.coverage_thresholds))}</span>
+        <span>ROI ${escapeHtml(formatRoiSize(liveCameraAnalysis.coverage_roi))}</span>
     `
 
     ensureLiveAnalysisStrip()
@@ -1364,6 +1576,14 @@ async function refreshLiveCameraAnalysis(force = false): Promise<void> {
         await preloadLiveAnalysisAssets(response.analysis)
         liveCameraAnalysis = response.analysis
         renderLiveCameraAnalysis()
+        if (dashboardState) {
+            renderDailySummarySection(
+                dashboardState.daily_summary,
+                dashboardState.image_analysis,
+                dashboardState.image_analysis_debug,
+                dailySummaryHistory,
+            )
+        }
         queueLiveAnalysisRefresh(LIVE_ANALYSIS_REFRESH_MS)
     } catch (_error) {
         queueLiveAnalysisRefresh(LIVE_ANALYSIS_RETRY_MS)
@@ -1618,11 +1838,16 @@ function bindEvents(): void {
         analysisRefreshPending = true
         setAnalysisRefreshState(true)
         try {
-            await analyzeImageNow()
             await refreshDashboard(true)
-            setMessage("อัปเดตภาพวิเคราะห์พื้นที่สีเขียวแล้ว")
+            if (cameraWanted && !document.hidden) {
+                await refreshLiveCameraAnalysis(true)
+            }
+            if (dashboardState) {
+                renderDashboard(dashboardState)
+            }
+            setMessage("รีเฟรชข้อมูลวิเคราะห์และชุดข้อมูลสำหรับโมเดลแล้ว")
         } catch (error) {
-            const text = error instanceof Error ? error.message : "วิเคราะห์ภาพไม่สำเร็จ"
+            const text = error instanceof Error ? error.message : "รีเฟรชข้อมูลวิเคราะห์ไม่สำเร็จ"
             setMessage(text, "error")
         } finally {
             analysisRefreshPending = false

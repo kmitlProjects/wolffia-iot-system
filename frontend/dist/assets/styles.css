@@ -81,7 +81,7 @@ label {
 }
 
 .app-shell {
-    width: min(1180px, calc(100vw - 1.25rem));
+    width: min(1260px, calc(100vw - 1.25rem));
     margin: 0 auto;
     padding: 1rem 0 2rem;
 }
@@ -307,6 +307,32 @@ label {
     gap: 0.85rem;
 }
 
+.metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+}
+
+.summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.daily-highlight-grid {
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+
+.chart-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.image-strip {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.analysis-process-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
 .metric-card,
 .chart-card,
 .rule-card,
@@ -322,6 +348,59 @@ label {
 .chart-card {
     display: grid;
     gap: 0.8rem;
+}
+
+.analysis-stage-card {
+    display: grid;
+    gap: 0.8rem;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(180deg, rgba(18, 128, 106, 0.08), rgba(18, 128, 106, 0.02)),
+        var(--surface-strong);
+    border: 1px solid rgba(18, 128, 106, 0.12);
+}
+
+.analysis-stage-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.analysis-stage-head strong {
+    font-size: 1rem;
+}
+
+.analysis-detail-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.analysis-detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.analysis-detail-row strong {
+    color: var(--text);
+    text-align: right;
+    font-size: 0.98rem;
+    line-height: 1.3;
+}
+
+.analysis-note {
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    background: rgba(18, 128, 106, 0.06);
+    border: 1px dashed rgba(18, 128, 106, 0.16);
+    color: var(--muted);
+    line-height: 1.55;
 }
 
 .chart-head,
@@ -410,6 +489,10 @@ label {
     text-align: center;
 }
 
+.wrap-anywhere {
+    overflow-wrap: anywhere;
+}
+
 #prediction-preview-copy {
     display: grid;
     gap: 0.7rem;
@@ -420,6 +503,11 @@ label {
     display: block;
     margin-top: 0.45rem;
     font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.summary-card strong.summary-compact-text {
+    font-size: clamp(1.1rem, 3vw, 1.45rem);
+    line-height: 1.1;
 }
 
 .metric-label,
@@ -576,7 +664,7 @@ label {
 
 @media (max-width: 719px) {
     .app-shell {
-        width: min(100vw - 0.8rem, 1180px);
+        width: min(100vw - 0.8rem, 1260px);
         padding-top: 0.45rem;
         padding-bottom: 1.25rem;
     }
@@ -621,11 +709,20 @@ label {
     .message-bar {
         bottom: 0.4rem;
     }
+
+    .analysis-detail-row {
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .analysis-detail-row strong {
+        text-align: left;
+    }
 }
 
 @media (min-width: 720px) {
     .app-shell {
-        width: min(1180px, calc(100vw - 2rem));
+        width: min(1260px, calc(100vw - 2rem));
         padding-top: 1.5rem;
     }
 
@@ -636,22 +733,6 @@ label {
 
     .day-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .metric-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .summary-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .daily-highlight-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .image-strip {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .fertilizer-grid {
@@ -683,6 +764,14 @@ label {
         grid-template-columns: 1.15fr 0.85fr;
     }
 
+    .daily-highlight-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .analysis-process-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .prediction-panel {
         grid-column: 1 / -1;
     }
@@ -708,5 +797,19 @@ label {
 
     .camera-shell {
         aspect-ratio: 16 / 10;
+    }
+}
+
+@media (min-width: 1180px) {
+    .daily-highlight-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .analysis-process-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .chart-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
