@@ -930,37 +930,32 @@ function renderDailySummarySection(
         <article class="summary-card">
             <span class="card-label">Live Coverage Now</span>
             <strong>${formatNumber(liveCameraAnalysis?.green_coverage_percent, 2)} %</strong>
-            <span class="helper-text">
-                captured ${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))} • preview only
-            </span>
+            <span class="helper-text">captured ${escapeHtml(formatTimestamp(liveCameraAnalysis?.captured_at))}</span>
+            <span class="helper-text">preview only</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Hourly Records In View</span>
             <strong>${formatNumber(sensorHistory.length, 0)}</strong>
-            <span class="helper-text">
-                ${coveragePoints} coverage rows • saved ${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}
-            </span>
+            <span class="helper-text">${coveragePoints} coverage rows</span>
+            <span class="helper-text">saved ${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Coverage Pipeline</span>
             <strong class="summary-compact-text">${escapeHtml(liveMethod)}</strong>
-            <span class="helper-text wrap-anywhere">
-                ${escapeHtml(pipelineCopy)} • ${escapeHtml(String(liveVersion))}
-            </span>
+            <span class="helper-text">version ${escapeHtml(String(liveVersion))}</span>
+            <span class="helper-text wrap-anywhere">${escapeHtml(pipelineCopy)}</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Daily Rollup</span>
             <strong>${escapeHtml(latestSummary?.date ?? "-")}</strong>
-            <span class="helper-text">
-                ${latestSummary?.sensor_count ?? 0} hourly points • avg ${formatNumber(latestSummary?.green_coverage_avg, 2)}%
-            </span>
+            <span class="helper-text">${latestSummary?.sensor_count ?? 0} hourly points</span>
+            <span class="helper-text">avg ${formatNumber(latestSummary?.green_coverage_avg, 2)}%</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Stored Source</span>
             <strong class="summary-compact-text">${escapeHtml(storedSourceMode)}</strong>
-            <span class="helper-text wrap-anywhere">
-                ${escapeHtml(sourceLabel)} • cycle day ${escapeHtml(cycleDayLabel)}
-            </span>
+            <span class="helper-text">cycle day ${escapeHtml(cycleDayLabel)}</span>
+            <span class="helper-text wrap-anywhere">${escapeHtml(sourceLabel)}</span>
         </article>
     `
 
