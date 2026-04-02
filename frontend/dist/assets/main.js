@@ -225,9 +225,6 @@ function createLayout() {
                                     <button id="analysis-refresh-button" class="button-ghost" type="button">
                                         Refresh Hub
                                     </button>
-                                    <button id="download-template-button" class="button-secondary" type="button">
-                                        Download Template
-                                    </button>
                                     <button id="export-dataset-button" class="button-primary" type="button">
                                         Export Dataset
                                     </button>
@@ -237,30 +234,44 @@ function createLayout() {
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
                             <div id="analysis-footer-note" class="analysis-note"></div>
-                            <div class="model-data-tools">
-                                <label for="seed-cycle-id-input">
-                                    Seed Cycle ID
-                                    <input
-                                        id="seed-cycle-id-input"
-                                        type="text"
-                                        placeholder="seed_cycle_..."
-                                    >
-                                </label>
-                                <label for="seed-readings-file-input">
-                                    Upload temp/pH CSV
-                                    <input
-                                        id="seed-readings-file-input"
-                                        type="file"
-                                        accept=".csv,text/csv"
-                                    >
-                                </label>
-                                <button id="upload-template-button" class="button-secondary" type="button">
-                                    Upload CSV
-                                </button>
-                            </div>
-                            <div id="model-data-upload-copy" class="helper-text">
-                                ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo สำหรับ seed cycle
-                            </div>
+                            <section class="schedule-builder">
+                                <div class="schedule-builder-head">
+                                    <div>
+                                        <span class="card-label">Model Data / Advanced</span>
+                                        <strong>Import Historical temp/pH</strong>
+                                    </div>
+                                    <span class="helper-text">
+                                        ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังเข้า Mongo ไม่จำเป็นสำหรับการกด Predict Harvest ทุกครั้ง
+                                    </span>
+                                </div>
+                                <div class="model-data-tools">
+                                    <label for="seed-cycle-id-input">
+                                        Seed Cycle ID
+                                        <input
+                                            id="seed-cycle-id-input"
+                                            type="text"
+                                            placeholder="seed_cycle_..."
+                                        >
+                                    </label>
+                                    <label for="seed-readings-file-input">
+                                        Import Historical temp/pH CSV
+                                        <input
+                                            id="seed-readings-file-input"
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                        >
+                                    </label>
+                                    <button id="download-template-button" class="button-secondary" type="button">
+                                        Download CSV Template
+                                    </button>
+                                    <button id="upload-template-button" class="button-secondary" type="button">
+                                        Import CSV
+                                    </button>
+                                </div>
+                                <div id="model-data-upload-copy" class="helper-text">
+                                    ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
+                                </div>
+                            </section>
                         </div>
                     </section>
 
@@ -307,10 +318,13 @@ function createLayout() {
                                     Predict Harvest
                                 </button>
                             </div>
+                            <div class="helper-text">
+                                Predict ได้ทันทีจากข้อมูลล่าสุดในระบบ ถ้า temp/pH/coverage ปัจจุบันมีครบ ไม่ต้องอัปโหลดไฟล์ก่อน
+                            </div>
                             <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
                             <div id="prediction-preview-copy" class="rule-card rule-empty">
                                 ยังไม่มี prediction preview
-                                กด Predict Harvest เพื่อให้ backend โหลดโมเดลจริงและคำนวณวันเก็บเกี่ยวจากข้อมูลปัจจุบัน
+                                กด Predict Harvest เพื่อให้ backend โหลดโมเดลจริงและคำนวณวันเก็บเกี่ยวจากข้อมูลปัจจุบันได้ทันที
                             </div>
                         </div>
                     </section>
@@ -1082,7 +1096,7 @@ function renderPredictionPreview(state) {
         `;
         copyContainer.innerHTML = `
             ยังไม่มี prediction preview
-            กด Predict Harvest เพื่อดู readiness ของข้อมูล, จำนวน history ที่มี, และ baseline วันเก็บเกี่ยวก่อนเสียบโมเดลจริง
+            กด Predict Harvest เพื่อดู readiness ของข้อมูล, จำนวน history ที่มี, และ baseline วันเก็บเกี่ยวได้เลยโดยไม่ต้องอัปโหลดไฟล์ ถ้าข้อมูลล่าสุดครบ
         `;
         return;
     }
@@ -1407,7 +1421,7 @@ function setTemplateDownloadState(pending) {
     }
 
     button.disabled = pending;
-    button.textContent = pending ? "Preparing..." : "Download Template";
+    button.textContent = pending ? "Preparing..." : "Download CSV Template";
 }
 
 function setDatasetImportState(pending) {
@@ -1417,7 +1431,7 @@ function setDatasetImportState(pending) {
     }
 
     button.disabled = pending;
-    button.textContent = pending ? "Uploading..." : "Upload CSV";
+    button.textContent = pending ? "Importing..." : "Import CSV";
 }
 
 function triggerBlobDownload(blob, filename) {
@@ -1734,8 +1748,8 @@ function renderDashboard(state) {
     }
     if (modelDataCopy instanceof HTMLElement) {
         modelDataCopy.textContent = latestSeedCycleId
-            ? `seed cycle ล่าสุด: ${latestSeedCycleId} • ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo`
-            : "ดาวน์โหลด template -> กรอก temp/pH -> อัปโหลดกลับเข้า Mongo สำหรับ seed cycle";
+            ? `seed cycle ล่าสุด: ${latestSeedCycleId} • ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo`
+            : "ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle";
     }
 
     $("sensor-temp").textContent = `${formatNumber(sensor?.temp)} °C`;
@@ -1949,7 +1963,7 @@ function bindEvents() {
         try {
             const result = await downloadModelDataTemplate();
             triggerBlobDownload(result.blob, result.filename);
-            setMessage("ดาวน์โหลด template สำหรับกรอก temp/pH แล้ว");
+            setMessage("ดาวน์โหลด CSV template สำหรับกรอก temp/pH ย้อนหลังแล้ว");
         } catch (error) {
             const text = error instanceof Error ? error.message : "ดาวน์โหลด template ไม่สำเร็จ";
             setMessage(text, "error");
@@ -2018,9 +2032,9 @@ function bindEvents() {
             if (fileInput instanceof HTMLInputElement) {
                 fileInput.value = "";
             }
-            setMessage(`อัปโหลด CSV แล้ว (${rowsUpdated} rows updated)`);
+            setMessage(`import CSV แล้ว (${rowsUpdated} rows updated)`);
         } catch (error) {
-            const text = error instanceof Error ? error.message : "อัปโหลด CSV ไม่สำเร็จ";
+            const text = error instanceof Error ? error.message : "import CSV ไม่สำเร็จ";
             setMessage(text, "error");
         } finally {
             datasetImportPending = false;
