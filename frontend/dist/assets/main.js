@@ -133,7 +133,10 @@ function createLayout() {
                     <div class="panel-inner">
                         <div class="panel-header">
                             <div class="panel-title">
-                                <h2>Camera Snapshot</h2>
+                                <h2 class="section-heading">
+                                    ${renderIcon("camera.svg", "Camera Snapshot", "section-icon")}
+                                    <span>Camera Snapshot</span>
+                                </h2>
                                 <p>รีเฟรชภาพเป็นช่วง ๆ เพื่อดูบ่อสดโดยไม่เพิ่มภาระเครื่องเกินจำเป็น</p>
                             </div>
                             <button id="camera-toggle" class="button-ghost" type="button">
@@ -155,7 +158,10 @@ function createLayout() {
                         </div>
                         <div class="camera-analysis-block">
                             <div class="panel-title">
-                                <h3>Live OpenCV Preview</h3>
+                                <h3 class="section-heading">
+                                    ${renderIcon("LiveCV.svg", "Live OpenCV Preview", "section-icon")}
+                                    <span>Live OpenCV Preview</span>
+                                </h3>
                                 <p>ประมวลผลจากภาพสดที่แสดงอยู่ตอนนี้โดยไม่บันทึกภาพลง storage ใช้สำหรับดูผลการแยกพื้นที่สีเขียว ณ ตอนนั้น</p>
                             </div>
                             <div id="live-analysis-meta" class="history-metrics"></div>
@@ -167,7 +173,10 @@ function createLayout() {
                 <section id="status-section" class="panel status-panel">
                     <div class="panel-inner">
                         <div class="panel-title">
-                            <h2>Live Snapshot</h2>
+                            <h2 class="section-heading">
+                                ${renderIcon("stat.svg", "Live Snapshot", "section-icon")}
+                                <span>Live Snapshot</span>
+                            </h2>
                             <p>ค่าล่าสุดจาก sensor และสถานะอุปกรณ์ที่ใช้อยู่ตอนนี้</p>
                         </div>
                         <div class="metric-grid">
@@ -230,11 +239,15 @@ function createLayout() {
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
-                                    <h2>Model Data (Advanced)</h2>
+                                    <h2 class="section-heading">
+                                        ${renderIcon("db.svg", "Model Data (Advanced)", "section-icon")}
+                                        <span>Model Data (Advanced)</span>
+                                    </h2>
                                     <p>ข้อมูลสำหรับ dataset และ workflow โมเดล ใช้เมื่อจำเป็น</p>
                                 </div>
                                 <div class="panel-actions">
                                     <button id="analysis-refresh-button" class="button-ghost" type="button">
+                                        ${renderIcon("RefreshHub.svg", "Refresh Hub", "button-icon")}
                                         Refresh Hub
                                     </button>
                                 </div>
@@ -257,9 +270,11 @@ function createLayout() {
                                     </div>
                                     <div class="panel-actions">
                                         <button id="export-dataset-button" class="button-primary" type="button">
+                                            ${renderIcon("Export.svg", "Export Dataset", "button-icon")}
                                             Export Dataset
                                         </button>
                                         <button id="download-template-button" class="button-secondary" type="button">
+                                            ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
                                             Download CSV Template
                                         </button>
                                     </div>
@@ -281,6 +296,7 @@ function createLayout() {
                                             >
                                         </label>
                                         <button id="upload-template-button" class="button-secondary" type="button">
+                                            ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
                                             Import CSV
                                         </button>
                                     </div>
@@ -295,7 +311,10 @@ function createLayout() {
                     <section id="timeseries-section" class="panel timeseries-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
-                                <h2>Coverage Time Series</h2>
+                                <h2 class="section-heading">
+                                    ${renderIcon("stat.svg", "Coverage Time Series", "section-icon")}
+                                    <span>Coverage Time Series</span>
+                                </h2>
                                 <p>แนวโน้มย้อนหลังจากข้อมูลรายชั่วโมงของ coverage, อุณหภูมิ และ pH</p>
                             </div>
                             <div class="chart-grid">
@@ -328,7 +347,10 @@ function createLayout() {
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
-                                    <h2>Predict Harvest</h2>
+                                    <h2 class="section-heading">
+                                        ${renderIcon("HarvestPredict.svg", "Predict Harvest", "section-icon")}
+                                        <span>Predict Harvest</span>
+                                    </h2>
                                     <p>ใช้โมเดล baseline จาก Colab เพื่อทำนายวันเก็บเกี่ยวจาก coverage, temp และ pH ปัจจุบัน</p>
                                 </div>
                                 <button id="prediction-preview-button" class="button-primary" type="button">
@@ -351,7 +373,10 @@ function createLayout() {
                     <section id="light-section" class="panel light-control-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
-                                <h3>Light Control</h3>
+                                <h3 class="section-heading">
+                                    ${renderIcon("LightRelay.svg", "Light Control", "section-icon")}
+                                    <span>Light Control</span>
+                                </h3>
                                 <p>สั่งไฟแบบ manual หรือวางรอบเปิดปิดอัตโนมัติจาก card เดียวกัน</p>
                             </div>
                             <div class="actions">
@@ -395,7 +420,10 @@ function createLayout() {
                     <section id="water-section" class="panel">
                         <div class="panel-inner">
                             <div class="panel-title">
-                                <h3>Water Pump</h3>
+                                <h3 class="section-heading">
+                                    ${renderIcon("waterPump.svg", "Water Pump", "section-icon")}
+                                    <span>Water Pump</span>
+                                </h3>
                                 <p>กรอกลิตรน้ำที่ต้องการ แล้วระบบจะคำนวณเวลาเปิดปั๊มจากอัตราไหลให้อัตโนมัติ</p>
                             </div>
                             <div class="inline-fields">
@@ -455,7 +483,10 @@ function createLayout() {
                 <section id="fertilizer-section" class="panel">
                     <div class="panel-inner">
                         <div class="panel-title">
-                            <h2>Fertilizer Pumps</h2>
+                            <h2 class="section-heading">
+                                ${renderIcon("FertilizerPumps.svg", "Fertilizer Pumps", "section-icon")}
+                                <span>Fertilizer Pumps</span>
+                            </h2>
                             <p>กรอกปริมาณน้ำต่อหัวปั๊ม แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</p>
                         </div>
                         <div id="pump-fertilizer-list" class="fertilizer-grid"></div>
