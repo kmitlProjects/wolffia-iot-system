@@ -242,6 +242,7 @@ export interface DashboardState {
     prediction_latest?: unknown
     model_data?: {
         latest_seed_cycle_id?: string | null
+        sensor_interval_seconds?: number | null
         training_dataset_download_url?: string | null
         template_download_url?: string | null
         harvest_model_enabled?: boolean

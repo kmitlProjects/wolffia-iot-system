@@ -640,16 +640,19 @@ label {
     line-height: 1.55;
 }
 
-.analysis-advanced-content {
+.analysis-advanced-content,
+.live-analysis-content {
     display: grid;
     gap: 0.8rem;
 }
 
-.analysis-advanced-content[hidden] {
+.analysis-advanced-content[hidden],
+.live-analysis-content[hidden] {
     display: none !important;
 }
 
-.analysis-advanced-toggle {
+.analysis-advanced-toggle,
+.live-analysis-toggle {
     width: 100%;
     margin-top: 0.1rem;
     justify-content: center;
@@ -663,7 +666,8 @@ label {
     color: var(--text);
 }
 
-.analysis-advanced-toggle.open {
+.analysis-advanced-toggle.open,
+.live-analysis-toggle.open {
     background: rgba(18, 128, 106, 0.1);
     border-color: rgba(18, 128, 106, 0.22);
 }

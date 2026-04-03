@@ -59,6 +59,7 @@ let pollTimer: number | undefined
 let messageTimer: number | undefined
 let cameraRetryTimer: number | undefined
 let liveAnalysisTimer: number | undefined
+let nextSensorSaveTimer: number | undefined
 let cameraWanted = true
 let cameraLoaded = false
 let cameraStreamNonce = 0
@@ -72,6 +73,7 @@ let predictionPreview: HarvestPredictionPreviewResponse | null = null
 let liveCameraAnalysisPending = false
 let liveCameraAnalysis: LiveCameraAnalysis | null = null
 let analysisAdvancedOpen = false
+let liveAnalysisOpen = false
 
 function $(id: string): HTMLElement {
     const element = document.getElementById(id)
@@ -169,8 +171,24 @@ function createLayout(): string {
                                 </h3>
                                 <p>ประมวลผลจากภาพสดที่แสดงอยู่ตอนนี้โดยไม่บันทึกภาพลง storage ใช้สำหรับดูผลการแยกพื้นที่สีเขียว ณ ตอนนั้น</p>
                             </div>
-                            <div id="live-analysis-meta" class="analysis-preview-note"></div>
-                            <div id="live-analysis-strip" class="image-strip"></div>
+                            <button
+                                id="live-analysis-toggle"
+                                class="button-ghost live-analysis-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="live-analysis-content"
+                            >
+                                แสดงภาพตรวจสอบ OpenCV
+                            </button>
+                            <div
+                                id="live-analysis-content"
+                                class="live-analysis-content"
+                                hidden
+                                style="display: none;"
+                            >
+                                <div id="live-analysis-meta" class="analysis-preview-note"></div>
+                                <div id="live-analysis-strip" class="image-strip"></div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -212,14 +230,9 @@ function createLayout(): string {
                         </div>
                         <div class="summary-grid">
                             <article class="summary-card">
-                                <span class="card-label">Light Relay</span>
-                                <strong id="light-status-chip">-</strong>
-                                <span id="light-mode-copy" class="helper-text">-</span>
-                            </article>
-                            <article class="summary-card">
-                                <span class="card-label">Water Pump</span>
-                                <strong id="pump-water-status-chip">-</strong>
-                                <span id="pump-water-copy" class="helper-text">-</span>
+                                <span class="card-label">Next Timeseries Save</span>
+                                <strong id="next-sensor-save-countdown">-</strong>
+                                <span id="next-sensor-save-copy" class="helper-text">-</span>
                             </article>
                             <article class="summary-card">
                                 <span class="card-label">Fertilizer Pumps</span>
@@ -602,6 +615,51 @@ function formatTimeOnly(value: string | null | undefined): string {
         hour: "2-digit",
         minute: "2-digit",
     }).format(parsed)
+}
+
+function formatCountdownLabel(totalSeconds: number): string {
+    const safeSeconds = Math.max(0, totalSeconds)
+    const hours = Math.floor(safeSeconds / 3600)
+    const minutes = Math.floor((safeSeconds % 3600) / 60)
+    const seconds = safeSeconds % 60
+
+    if (hours > 0) {
+        return `${hours}h ${String(minutes).padStart(2, "0")}m`
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${String(seconds).padStart(2, "0")}s`
+    }
+    return `${seconds}s`
+}
+
+function getSensorIntervalSeconds(state: DashboardState | null = dashboardState): number {
+    const configuredSeconds = state?.model_data?.sensor_interval_seconds
+    if (configuredSeconds && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
+        return configuredSeconds
+    }
+    return 3600
+}
+
+function getNextSensorSaveDate(state: DashboardState | null = dashboardState): Date | null {
+    const sensorTimestamp = state?.sensor?.timestamp
+    if (!sensorTimestamp) {
+        return null
+    }
+
+    const parsed = new Date(sensorTimestamp)
+    if (Number.isNaN(parsed.getTime())) {
+        return null
+    }
+
+    const intervalSeconds = getSensorIntervalSeconds(state)
+    let targetMs = parsed.getTime() + (intervalSeconds * 1000)
+    const nowMs = Date.now()
+
+    while (targetMs <= nowMs) {
+        targetMs += intervalSeconds * 1000
+    }
+
+    return new Date(targetMs)
 }
 
 function formatDateLabel(value: string | null | undefined): string {
@@ -2065,6 +2123,45 @@ function clearCameraTimer(): void {
     }
 }
 
+function clearNextSensorSaveTimer(): void {
+    if (nextSensorSaveTimer !== undefined) {
+        window.clearInterval(nextSensorSaveTimer)
+        nextSensorSaveTimer = undefined
+    }
+}
+
+function renderNextSensorSaveCountdown(state: DashboardState | null = dashboardState): void {
+    const countdown = document.getElementById("next-sensor-save-countdown")
+    const copy = document.getElementById("next-sensor-save-copy")
+    if (!(countdown instanceof HTMLElement) || !(copy instanceof HTMLElement)) {
+        return
+    }
+
+    const nextSaveAt = getNextSensorSaveDate(state)
+    if (!nextSaveAt) {
+        countdown.textContent = "-"
+        copy.textContent = "ยังไม่มี sensor timestamp สำหรับคำนวณรอบบันทึกถัดไป"
+        return
+    }
+
+    const intervalMinutes = Math.max(1, Math.round(getSensorIntervalSeconds(state) / 60))
+    const remainingSeconds = Math.max(
+        0,
+        Math.ceil((nextSaveAt.getTime() - Date.now()) / 1000),
+    )
+
+    countdown.textContent = formatCountdownLabel(remainingSeconds)
+    copy.textContent = `บันทึกลง DB เวลา ${formatTimeOnly(nextSaveAt.toISOString())} • ทุก ${intervalMinutes} นาที`
+}
+
+function ensureNextSensorSaveTimer(): void {
+    clearNextSensorSaveTimer()
+    renderNextSensorSaveCountdown()
+    nextSensorSaveTimer = window.setInterval(() => {
+        renderNextSensorSaveCountdown()
+    }, 1000)
+}
+
 function setAnalysisRefreshState(pending: boolean): void {
     const button = document.getElementById("analysis-refresh-button") as HTMLButtonElement | null
     if (!button) {
@@ -2089,6 +2186,24 @@ function setAnalysisAdvancedOpenState(open: boolean): void {
     button.textContent = open
         ? "ซ่อนรายละเอียดโมเดลและเครื่องมือขั้นสูง"
         : "แสดงรายละเอียดโมเดลและเครื่องมือขั้นสูง"
+    button.setAttribute("aria-expanded", open ? "true" : "false")
+    button.classList.toggle("open", open)
+    content.hidden = !open
+    content.style.display = open ? "grid" : "none"
+    content.setAttribute("aria-hidden", open ? "false" : "true")
+}
+
+function setLiveAnalysisOpenState(open: boolean): void {
+    liveAnalysisOpen = open
+    const button = document.getElementById("live-analysis-toggle") as HTMLButtonElement | null
+    const content = document.getElementById("live-analysis-content") as HTMLDivElement | null
+    if (!button || !content) {
+        return
+    }
+
+    button.textContent = open
+        ? "ซ่อนภาพตรวจสอบ OpenCV"
+        : "แสดงภาพตรวจสอบ OpenCV"
     button.setAttribute("aria-expanded", open ? "true" : "false")
     button.classList.toggle("open", open)
     content.hidden = !open
@@ -2436,7 +2551,6 @@ function syncCamera(): void {
 function renderLiveSnapshot(state: DashboardState): void {
     const sensor = state.sensor
     const light = state.actuators.light
-    const waterPump = state.actuators.pump_water
     const fertilizer = state.actuators.pump_fertilizer
     const cycle = state.grow_cycle
     const cycleProgress = getResolvedCycleProgress(state)
@@ -2458,11 +2572,8 @@ function renderLiveSnapshot(state: DashboardState): void {
     $("sensor-timestamp-copy").textContent = sensor?.timestamp
         ? "อ้างอิงค่า temp / pH ล่าสุดในระบบ"
         : "ยังไม่มีข้อมูล temp / pH ล่าสุด"
+    renderNextSensorSaveCountdown(state)
 
-    $("light-status-chip").textContent = light.is_on ? "ON" : "OFF"
-    $("light-mode-copy").textContent = light.is_on
-        ? "ไฟกำลังทำงานอยู่"
-        : "พร้อมสั่งงานแบบ manual หรือ schedule"
     const manualLightStatus = document.getElementById("manual-light-status")
     if (manualLightStatus) {
         manualLightStatus.textContent = light.is_on ? "ON" : "OFF"
@@ -2473,13 +2584,6 @@ function renderLiveSnapshot(state: DashboardState): void {
             ? "ไฟกำลังทำงานอยู่ กด Turn Off ได้ทันที"
             : "ไฟพร้อมสั่งงาน กด Turn On ได้ทันที"
     }
-
-    $("pump-water-status-chip").textContent = waterPump.is_running
-        ? "RUNNING"
-        : "READY"
-    $("pump-water-copy").textContent = waterPump.is_running
-        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • เหลือ ${waterPump.remaining_seconds}s`
-        : "พร้อมสำหรับ manual หรือ schedule"
 
     $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
     $("grow-cycle-status-chip").textContent = cycleProgress
@@ -2621,10 +2725,12 @@ function bindRuleContainer(containerId: string): void {
 function bindEvents(): void {
     setAnalysisRefreshState(false)
     setAnalysisAdvancedOpenState(false)
+    setLiveAnalysisOpenState(false)
     setDatasetExportState(false)
     setDatasetImportState(false)
     setTemplateDownloadState(false)
     setPredictionPreviewState(false)
+    ensureNextSensorSaveTimer()
     renderLiveCameraAnalysis()
 
     const cameraStream = document.getElementById("camera-stream") as HTMLImageElement | null
@@ -2659,11 +2765,16 @@ function bindEvents(): void {
         syncCamera()
     })
 
+    $("live-analysis-toggle").addEventListener("click", () => {
+        setLiveAnalysisOpenState(!liveAnalysisOpen)
+    })
+
     $("analysis-advanced-toggle").addEventListener("click", () => {
         setAnalysisAdvancedOpenState(!analysisAdvancedOpen)
     })
 
     window.addEventListener("pageshow", () => {
+        setLiveAnalysisOpenState(false)
         setAnalysisAdvancedOpenState(false)
     })
 
@@ -2952,6 +3063,7 @@ function bindEvents(): void {
         } else {
             clearLiveAnalysisTimer()
         }
+        renderNextSensorSaveCountdown()
         queueRefresh()
     })
 }
@@ -2970,7 +3082,9 @@ async function bootstrap(): Promise<void> {
     syncCamera()
     void refreshLiveCameraAnalysis(true)
     await refreshDashboard()
+    renderNextSensorSaveCountdown()
     setAnalysisAdvancedOpenState(false)
+    setLiveAnalysisOpenState(false)
     queueRefresh()
 }
 

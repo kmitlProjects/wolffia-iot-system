@@ -81,6 +81,7 @@ from config import (
     PREDICTION_COLLECTION,
     PREDICTION_LOOKBACK_DAYS,
     PREDICTION_SENSOR_LIMIT,
+    SENSOR_INTERVAL_SECONDS,
     SNAPSHOT_POLL_SECONDS,
     SNAPSHOT_TIME,
     SNAPSHOT_TIMEOUT_SECONDS,
@@ -462,6 +463,7 @@ def get_dashboard_state():
             "latest_seed_cycle_id": (
                 get_latest_seed_cycle_document() or {}
             ).get("cycle_id"),
+            "sensor_interval_seconds": SENSOR_INTERVAL_SECONDS,
             "training_dataset_download_url": "/model-data/training-dataset/download?allow_missing_sensor=true",
             "template_download_url": "/model-data/template/download",
             "harvest_model_enabled": HARVEST_MODEL_ENABLED,
