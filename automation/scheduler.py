@@ -57,24 +57,46 @@ def normalize_time_value(value: str):
     return parsed.strftime("%H:%M")
 
 
-def normalize_start_date(value: str | None, timezone_name: str):
+def normalize_date_value(label: str, value: str | None):
     if value in (None, ""):
         return None
 
     if not isinstance(value, str):
-        raise ValueError("start_date must be a string in YYYY-MM-DD format")
+        raise ValueError(f"{label} must be a string in YYYY-MM-DD format")
 
     try:
         parsed = datetime.strptime(value.strip(), "%Y-%m-%d")
     except ValueError as exc:
-        raise ValueError("start_date must be in YYYY-MM-DD format") from exc
+        raise ValueError(f"{label} must be in YYYY-MM-DD format") from exc
 
-    normalized = parsed.strftime("%Y-%m-%d")
+    return parsed.strftime("%Y-%m-%d")
+
+
+def normalize_date_window(
+    start_date: str | None,
+    end_date: str | None,
+    timezone_name: str,
+):
+    normalized_start = normalize_date_value("start_date", start_date)
+    normalized_end = normalize_date_value("end_date", end_date)
     today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
-    if normalized < today:
+
+    if normalized_end and not normalized_start:
+        raise ValueError("start_date is required when end_date is provided")
+
+    if normalized_start and normalized_start < today:
         raise ValueError("start_date cannot be in the past")
 
-    return normalized
+    if normalized_end and normalized_end < today:
+        raise ValueError("end_date cannot be in the past")
+
+    if normalized_start and normalized_end and normalized_end < normalized_start:
+        raise ValueError("end_date must be greater than or equal to start_date")
+
+    if normalized_start and not normalized_end:
+        normalized_end = normalized_start
+
+    return normalized_start, normalized_end
 
 
 def normalize_days(days):
@@ -110,6 +132,7 @@ def serialize_rule(document):
         "enabled": bool(document.get("enabled", True)),
         "days": list(document.get("days", [])),
         "start_date": document.get("start_date"),
+        "end_date": document.get("end_date"),
         "created_at": document.get("created_at").isoformat()
         if document.get("created_at") is not None
         else None,
@@ -175,20 +198,31 @@ class AutomationScheduler:
         self,
         on_time: str,
         off_time: str,
-        days,
+        days=None,
         enabled: bool = True,
         start_date: str | None = None,
+        end_date: str | None = None,
     ):
         normalized_on = normalize_time_value(on_time)
         normalized_off = normalize_time_value(off_time)
         if normalized_on == normalized_off:
             raise ValueError("on_time and off_time must be different")
+        normalized_days = normalize_days(days) if days else []
+        normalized_start, normalized_end = normalize_date_window(
+            start_date,
+            end_date,
+            self.timezone_name,
+        )
+
+        if not normalized_days and not normalized_start:
+            raise ValueError("start_date is required when weekdays are not selected")
 
         document = {
             "device": "light",
             "enabled": bool(enabled),
-            "days": normalize_days(days),
-            "start_date": normalize_start_date(start_date, self.timezone_name),
+            "days": normalized_days,
+            "start_date": normalized_start,
+            "end_date": normalized_end,
             "on_time": normalized_on,
             "off_time": normalized_off,
             "last_triggered": {"on": None, "off": None},
@@ -203,19 +237,30 @@ class AutomationScheduler:
         start_time: str,
         duration_seconds: float,
         water_liters: float | None,
-        days,
+        days=None,
         enabled: bool = True,
         start_date: str | None = None,
+        end_date: str | None = None,
     ):
         duration_seconds = float(duration_seconds)
         if duration_seconds <= 0:
             raise ValueError("duration_seconds must be greater than 0")
+        normalized_days = normalize_days(days) if days else []
+        normalized_start, normalized_end = normalize_date_window(
+            start_date,
+            end_date,
+            self.timezone_name,
+        )
+
+        if not normalized_days and not normalized_start:
+            raise ValueError("start_date is required when weekdays are not selected")
 
         document = {
             "device": "pump_water",
             "enabled": bool(enabled),
-            "days": normalize_days(days),
-            "start_date": normalize_start_date(start_date, self.timezone_name),
+            "days": normalized_days,
+            "start_date": normalized_start,
+            "end_date": normalized_end,
             "start_time": normalize_time_value(start_time),
             "duration_seconds": duration_seconds,
             "water_liters": float(water_liters) if water_liters is not None else None,
@@ -274,11 +319,14 @@ class AutomationScheduler:
         rules = list(self.collection.find({"enabled": True}))
         for rule in rules:
             start_date = rule.get("start_date")
+            end_date = rule.get("end_date")
             if start_date and today_key < start_date:
+                continue
+            if end_date and today_key > end_date:
                 continue
 
             days = rule.get("days") or []
-            if weekday not in days:
+            if days and weekday not in days:
                 continue
 
             if rule.get("device") == "light":

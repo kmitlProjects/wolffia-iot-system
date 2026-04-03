@@ -334,13 +334,17 @@ function createLayout() {
                                         <span class="card-label">Light Schedule</span>
                                         <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
                                     </div>
-                                    <span class="helper-text">เลือกวันที่เริ่มใช้ วัน และช่วงเวลา ระบบจะไม่รับวันย้อนหลัง</span>
+                                    <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุดและเวลา ระบบจะไม่รับวันย้อนหลัง</span>
                                 </div>
                                 <form id="light-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
                                         <label for="light-start-date">
                                             Start date
                                             <input id="light-start-date" type="date">
+                                        </label>
+                                        <label for="light-end-date">
+                                            End date
+                                            <input id="light-end-date" type="date">
                                         </label>
                                         <label for="light-on-time">
                                             On time
@@ -351,7 +355,6 @@ function createLayout() {
                                             <input id="light-off-time" type="time" value="22:00">
                                         </label>
                                     </div>
-                                    <div id="light-days" class="day-grid"></div>
                                     <button class="button-primary schedule-submit-button" type="submit">
                                         Add Light Schedule
                                     </button>
@@ -402,13 +405,17 @@ function createLayout() {
                                         <span class="card-label">Water Pump Schedule</span>
                                         <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
                                     </div>
-                                    <span class="helper-text">เลือกวันที่เริ่มใช้ เวลา วัน และจำนวนลิตรที่ต้องการในแต่ละรอบ</span>
+                                    <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด เวลา และจำนวนลิตรต่อรอบ</span>
                                 </div>
                                 <form id="pump-water-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
                                         <label for="pump-water-start-date">
                                             Start date
                                             <input id="pump-water-start-date" type="date">
+                                        </label>
+                                        <label for="pump-water-end-date">
+                                            End date
+                                            <input id="pump-water-end-date" type="date">
                                         </label>
                                         <label for="pump-water-start-time">
                                             Start time
@@ -425,7 +432,6 @@ function createLayout() {
                                             >
                                         </label>
                                     </div>
-                                    <div id="pump-water-days" class="day-grid"></div>
                                     <button class="button-primary schedule-submit-button" type="submit">
                                         Add Water Pump Schedule
                                     </button>
@@ -633,35 +639,85 @@ function getTodayScheduleDateValue(timeZone = getResolvedTimeZone()) {
 function syncScheduleDateInputs(state = dashboardState) {
     const today = getTodayScheduleDateValue(getResolvedTimeZone(state));
 
-    ["light-start-date", "pump-water-start-date"].forEach((inputId) => {
-        const input = document.getElementById(inputId);
-        if (!input) {
+    const pairs = [
+        ["light-start-date", "light-end-date"],
+        ["pump-water-start-date", "pump-water-end-date"],
+    ];
+
+    pairs.forEach(([startId, endId]) => {
+        const startInput = document.getElementById(startId);
+        const endInput = document.getElementById(endId);
+        if (!startInput || !endInput) {
             return;
         }
 
-        input.min = today;
-        if (!input.value || input.value < today) {
-            input.value = today;
+        startInput.min = today;
+        if (!startInput.value || startInput.value < today) {
+            startInput.value = today;
+        }
+
+        endInput.min = startInput.value;
+        if (!endInput.value || endInput.value < startInput.value) {
+            endInput.value = startInput.value;
         }
     });
 }
 
-function readScheduleStartDate(inputId) {
-    const input = document.getElementById(inputId);
-    const value = input?.value?.trim() ?? "";
-    if (!value) {
-        throw new Error("กรุณาเลือกวันที่เริ่มใช้งาน");
+function bindScheduleDateRange(startId, endId) {
+    const startInput = document.getElementById(startId);
+    const endInput = document.getElementById(endId);
+    if (!startInput || !endInput) {
+        return;
+    }
+
+    const syncEndDate = () => {
+        const today = getTodayScheduleDateValue();
+        startInput.min = today;
+        if (!startInput.value || startInput.value < today) {
+            startInput.value = today;
+        }
+
+        endInput.min = startInput.value;
+        if (!endInput.value || endInput.value < startInput.value) {
+            endInput.value = startInput.value;
+        }
+    };
+
+    startInput.addEventListener("input", syncEndDate);
+    endInput.addEventListener("input", () => {
+        if (endInput.value && endInput.value < startInput.value) {
+            endInput.value = startInput.value;
+        }
+    });
+    syncEndDate();
+}
+
+function readScheduleDateRange(startId, endId) {
+    const startInput = document.getElementById(startId);
+    const endInput = document.getElementById(endId);
+    const startDate = startInput?.value?.trim() ?? "";
+    const endDate = endInput?.value?.trim() ?? "";
+
+    if (!startDate || !endDate) {
+        throw new Error("กรุณาเลือกวันที่เริ่มและวันที่สิ้นสุด");
     }
 
     const today = getTodayScheduleDateValue();
-    if (value < today) {
-        if (input) {
-            input.value = today;
+    if (startDate < today) {
+        if (startInput) {
+            startInput.value = today;
         }
-        throw new Error("กรุณาเลือกวันที่ปัจจุบันหรือวันในอนาคต");
+        throw new Error("กรุณาเลือกวันที่เริ่มเป็นวันนี้หรือวันในอนาคต");
     }
 
-    return value;
+    if (endDate < startDate) {
+        if (endInput) {
+            endInput.value = startDate;
+        }
+        throw new Error("วันที่สิ้นสุดต้องไม่เร็วกว่าวันที่เริ่ม");
+    }
+
+    return { startDate, endDate };
 }
 
 function slugToFriendlyLabel(value) {
@@ -1667,24 +1723,44 @@ function renderLightRules(rules) {
 
     container.innerHTML = rules.map(
         (rule) => {
+            const hasDateWindow = Boolean(rule.start_date || rule.end_date);
             const isPending = Boolean(rule.start_date && rule.start_date > today);
-            const statusTone = !rule.enabled ? "danger" : isPending ? "warning" : "active";
-            const statusText = !rule.enabled ? "Disabled" : isPending ? "Starts later" : "Enabled";
+            const isEnded = Boolean(rule.end_date && rule.end_date < today);
+            const statusTone = !rule.enabled ? "danger" : isEnded ? "danger" : isPending ? "warning" : "active";
+            const statusText = !rule.enabled
+                ? "Disabled"
+                : isEnded
+                    ? "Ended"
+                    : isPending
+                        ? "Starts later"
+                        : hasDateWindow
+                            ? "Active window"
+                            : "Enabled";
             const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้";
+            const endDateLabel = rule.end_date ? formatFullDateLabel(rule.end_date) : startDateLabel;
+            const dateWindowMarkup = hasDateWindow
+                ? `
+                    <div class="schedule-time-box">
+                        <span>Start date</span>
+                        <strong>${escapeHtml(startDateLabel)}</strong>
+                    </div>
+                    <div class="schedule-time-box">
+                        <span>End date</span>
+                        <strong>${escapeHtml(endDateLabel)}</strong>
+                    </div>
+                `
+                : "";
 
             return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Light Schedule</span>
-                        <strong>เปิดปิดไฟอัตโนมัติประจำสัปดาห์</strong>
+                        <strong>เปิดปิดไฟอัตโนมัติตามช่วงวันที่</strong>
                     </div>
                     <span class="mini-chip ${statusTone}">
                         ${statusText}
                     </span>
-                </div>
-                <div class="schedule-day-chips">
-                    ${renderDayChips(rule.days)}
                 </div>
                 <div class="schedule-time-grid">
                     <div class="schedule-time-box">
@@ -1695,10 +1771,7 @@ function renderLightRules(rules) {
                         <span>Off</span>
                         <strong>${escapeHtml(rule.off_time)}</strong>
                     </div>
-                    <div class="schedule-time-box">
-                        <span>Start date</span>
-                        <strong>${escapeHtml(startDateLabel)}</strong>
-                    </div>
+                    ${dateWindowMarkup}
                 </div>
                 <div class="schedule-rule-actions">
                     <label class="day-option schedule-toggle">
@@ -1735,24 +1808,44 @@ function renderPumpWaterRules(rules) {
 
     container.innerHTML = rules.map(
         (rule) => {
+            const hasDateWindow = Boolean(rule.start_date || rule.end_date);
             const isPending = Boolean(rule.start_date && rule.start_date > today);
-            const statusTone = !rule.enabled ? "danger" : isPending ? "warning" : "active";
-            const statusText = !rule.enabled ? "Disabled" : isPending ? "Starts later" : "Enabled";
+            const isEnded = Boolean(rule.end_date && rule.end_date < today);
+            const statusTone = !rule.enabled ? "danger" : isEnded ? "danger" : isPending ? "warning" : "active";
+            const statusText = !rule.enabled
+                ? "Disabled"
+                : isEnded
+                    ? "Ended"
+                    : isPending
+                        ? "Starts later"
+                        : hasDateWindow
+                            ? "Active window"
+                            : "Enabled";
             const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้";
+            const endDateLabel = rule.end_date ? formatFullDateLabel(rule.end_date) : startDateLabel;
+            const dateWindowMarkup = hasDateWindow
+                ? `
+                    <div class="schedule-time-box">
+                        <span>Start date</span>
+                        <strong>${escapeHtml(startDateLabel)}</strong>
+                    </div>
+                    <div class="schedule-time-box">
+                        <span>End date</span>
+                        <strong>${escapeHtml(endDateLabel)}</strong>
+                    </div>
+                `
+                : "";
 
             return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Water Pump Schedule</span>
-                        <strong>รอบให้น้ำอัตโนมัติประจำสัปดาห์</strong>
+                        <strong>รอบให้น้ำอัตโนมัติตามช่วงวันที่</strong>
                     </div>
                     <span class="mini-chip ${statusTone}">
                         ${statusText}
                     </span>
-                </div>
-                <div class="schedule-day-chips">
-                    ${renderDayChips(rule.days)}
                 </div>
                 <div class="schedule-time-grid">
                     <div class="schedule-time-box">
@@ -1763,10 +1856,7 @@ function renderPumpWaterRules(rules) {
                         <span>Water</span>
                         <strong>${formatNumber(rule.water_liters, 2)} L</strong>
                     </div>
-                    <div class="schedule-time-box">
-                        <span>Start date</span>
-                        <strong>${escapeHtml(startDateLabel)}</strong>
-                    </div>
+                    ${dateWindowMarkup}
                 </div>
                 <div class="schedule-rule-actions">
                     <label class="day-option schedule-toggle">
@@ -2708,22 +2798,16 @@ function bindEvents() {
 
     $("light-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const startDate = readScheduleStartDate("light-start-date");
+        const { startDate, endDate } = readScheduleDateRange("light-start-date", "light-end-date");
         const onTime = $("light-on-time").value;
         const offTime = $("light-off-time").value;
-        const days = collectDays("light-days");
-
-        if (days.length === 0) {
-            setMessage("เลือกวันอย่างน้อย 1 วันก่อนสร้าง schedule", "error");
-            return;
-        }
 
         await runAction("Light schedule added", async () => {
             await createLightSchedule({
                 on_time: onTime,
                 off_time: offTime,
-                days,
                 start_date: startDate,
+                end_date: endDate,
                 enabled: true,
             });
         });
@@ -2731,21 +2815,15 @@ function bindEvents() {
 
     $("pump-water-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const startDate = readScheduleStartDate("pump-water-start-date");
+        const { startDate, endDate } = readScheduleDateRange("pump-water-start-date", "pump-water-end-date");
         const startTime = $("pump-water-start-time").value;
-        const days = collectDays("pump-water-days");
-
-        if (days.length === 0) {
-            setMessage("เลือกวันอย่างน้อย 1 วันก่อนสร้าง schedule", "error");
-            return;
-        }
 
         await runAction("Water pump schedule added", async () => {
             await createPumpWaterSchedule({
                 start_time: startTime,
                 water_liters: readPositiveNumber("pump-water-schedule-liters"),
-                days,
                 start_date: startDate,
+                end_date: endDate,
                 enabled: true,
             });
         });
@@ -2772,10 +2850,10 @@ async function bootstrap() {
     }
 
     root.innerHTML = createLayout();
-    renderDayOptions("light-days", "light-days");
-    renderDayOptions("pump-water-days", "pump-water-days");
     syncScheduleDateInputs(null);
     bindEvents();
+    bindScheduleDateRange("light-start-date", "light-end-date");
+    bindScheduleDateRange("pump-water-start-date", "pump-water-end-date");
     syncCamera();
     void refreshLiveCameraAnalysis(true);
     await refreshDashboard();
