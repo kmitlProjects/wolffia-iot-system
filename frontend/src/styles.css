@@ -379,6 +379,21 @@ label {
     margin-top: 1rem;
 }
 
+.analysis-preview-note {
+    display: flex;
+    align-items: center;
+    min-height: 3.15rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(18, 128, 106, 0.05), rgba(18, 128, 106, 0.02)),
+        #fcfcf7;
+    border: 1px solid rgba(18, 128, 106, 0.1);
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
 .metric-grid,
 .analytics-grid,
 .chart-grid,
@@ -416,6 +431,17 @@ label {
 
 .image-strip {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.camera-analysis-block .image-strip {
+    align-items: start;
+}
+
+.camera-analysis-block .rule-empty {
+    min-height: 5.25rem;
+    display: grid;
+    place-items: center;
+    text-align: center;
 }
 
 .analysis-process-grid {

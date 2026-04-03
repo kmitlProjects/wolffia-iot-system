@@ -168,7 +168,7 @@ function createLayout(): string {
                                 </h3>
                                 <p>ประมวลผลจากภาพสดที่แสดงอยู่ตอนนี้โดยไม่บันทึกภาพลง storage ใช้สำหรับดูผลการแยกพื้นที่สีเขียว ณ ตอนนั้น</p>
                             </div>
-                            <div id="live-analysis-meta" class="history-metrics"></div>
+                            <div id="live-analysis-meta" class="analysis-preview-note"></div>
                             <div id="live-analysis-strip" class="image-strip"></div>
                         </div>
                     </div>
@@ -2275,10 +2275,8 @@ function renderLiveCameraAnalysis(): void {
     const strip = $("live-analysis-strip")
 
     if (!liveCameraAnalysis) {
-        meta.innerHTML = `
-            <span>กำลังรอภาพสดสำหรับวิเคราะห์ด้วย OpenCV</span>
-            <span>ไม่มีการบันทึกรูปลง storage</span>
-        `
+        meta.textContent =
+            "กำลังรอเฟรมสดเพื่อแสดง Current Snapshot, Binary Mask และ Green Overlay"
         strip.innerHTML = `
             <div class="rule-card rule-empty">
                 พื้นที่นี้จะแสดงภาพปัจจุบัน, binary mask และ green overlay จากเฟรมสดที่กำลังดูอยู่
@@ -2294,14 +2292,8 @@ function renderLiveCameraAnalysis(): void {
     const maskUrl = buildAnalysisAssetUrl(liveCameraAnalysis.mask_url, previewKey)
     const overlayUrl = buildAnalysisAssetUrl(liveCameraAnalysis.overlay_url, previewKey)
 
-    meta.innerHTML = `
-        <span>captured ${escapeHtml(formatTimestamp(liveCameraAnalysis.captured_at))}</span>
-        <span>coverage ${formatNumber(liveCameraAnalysis.green_coverage_percent, 2)}%</span>
-        <span>${formatNumber(liveCameraAnalysis.green_pixels, 0)} / ${formatNumber(liveCameraAnalysis.total_pixels, 0)} green pixels</span>
-        <span>${escapeHtml(formatCoverageMethod(liveCameraAnalysis.coverage_method))}</span>
-        <span>${escapeHtml(formatCoverageProcess(liveCameraAnalysis.coverage_thresholds))}</span>
-        <span>ROI ${escapeHtml(formatRoiSize(liveCameraAnalysis.coverage_roi))}</span>
-    `
+    meta.textContent =
+        "แสดงเฉพาะภาพปัจจุบัน, binary mask และ green overlay ของเฟรมสดเพื่อช่วยเช็กคุณภาพการแยกพื้นที่สีเขียว"
 
     ensureLiveAnalysisStrip()
     updateLiveAnalysisTile("live-analysis-raw-tile", "Current Snapshot", rawUrl)
