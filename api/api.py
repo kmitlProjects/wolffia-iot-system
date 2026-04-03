@@ -3,7 +3,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -409,7 +409,7 @@ def get_prediction_history(limit: int = 20):
 
 
 def get_sensor_history(limit: int = 48):
-    safe_limit = max(min(int(limit), 240), 1)
+    safe_limit = max(min(int(limit), 400), 1)
     data = list(collection.find().sort([("_id", -1)]).limit(safe_limit))
     return [serialize_document(item) for item in reversed(data)]
 
@@ -443,6 +443,20 @@ def get_grouped_automation_rules():
     return grouped
 
 
+def get_timeseries_stats():
+    now_utc = datetime.now(timezone.utc)
+    last_24h = now_utc - timedelta(days=1)
+    last_7d = now_utc - timedelta(days=7)
+    last_14d = now_utc - timedelta(days=14)
+
+    return {
+        "total_rows": collection.count_documents({}),
+        "last_24h_rows": collection.count_documents({"timestamp": {"$gte": last_24h}}),
+        "last_7d_rows": collection.count_documents({"timestamp": {"$gte": last_7d}}),
+        "last_14d_rows": collection.count_documents({"timestamp": {"$gte": last_14d}}),
+    }
+
+
 def get_dashboard_state():
     return {
         "meta": {
@@ -458,6 +472,7 @@ def get_dashboard_state():
         "image_analysis_debug": get_latest_image_analysis_debug(),
         "daily_summary": serialize_document(get_latest_daily_summary()),
         "grow_cycle": serialize_document(get_active_grow_cycle()),
+        "timeseries": get_timeseries_stats(),
         "prediction_latest": serialize_document(get_latest_prediction_document()),
         "model_data": {
             "latest_seed_cycle_id": (

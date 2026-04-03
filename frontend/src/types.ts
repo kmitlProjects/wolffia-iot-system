@@ -239,6 +239,12 @@ export interface DashboardState {
     grow_cycle: GrowCycle | null
     actuators: ActuatorState
     automation: AutomationState
+    timeseries?: {
+        total_rows?: number | null
+        last_24h_rows?: number | null
+        last_7d_rows?: number | null
+        last_14d_rows?: number | null
+    }
     prediction_latest?: unknown
     model_data?: {
         latest_seed_cycle_id?: string | null

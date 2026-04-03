@@ -686,6 +686,65 @@ label {
     align-items: center;
 }
 
+.summary-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.summary-card-wide {
+    grid-column: 1 / -1;
+}
+
+.timeseries-progress-card {
+    gap: 0.72rem;
+    background:
+        linear-gradient(180deg, rgba(18, 128, 106, 0.08), rgba(18, 128, 106, 0.02)),
+        var(--surface-strong);
+    border-color: rgba(18, 128, 106, 0.14);
+}
+
+.timeseries-progress-card strong {
+    font-size: clamp(1.12rem, 2.6vw, 1.45rem);
+    line-height: 1.08;
+}
+
+.timeseries-progress-card .mini-chip {
+    padding: 0.42rem 0.72rem;
+    font-size: 0.8rem;
+    background: rgba(18, 128, 106, 0.12);
+    color: var(--accent-deep);
+}
+
+.timeseries-progress-track {
+    position: relative;
+    width: 100%;
+    height: 0.78rem;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(24, 48, 44, 0.1);
+}
+
+.timeseries-progress-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #12806a 0%, #6dcf9a 100%);
+    transition: width 180ms ease;
+}
+
+.timeseries-progress-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.55rem 1rem;
+    color: var(--muted);
+    font-size: 0.84rem;
+}
+
 .history-metrics {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

@@ -235,14 +235,32 @@ function createLayout(): string {
                                 <span id="next-sensor-save-copy" class="helper-text">-</span>
                             </article>
                             <article class="summary-card">
-                                <span class="card-label">Fertilizer Pumps</span>
-                                <strong id="fertilizer-summary">-</strong>
-                                <span class="helper-text">ควบคุมแยกเป็นรายหัวปั๊ม</span>
-                            </article>
-                            <article class="summary-card">
                                 <span class="card-label">Grow Cycle</span>
                                 <strong id="grow-cycle-status-chip">-</strong>
                                 <span id="grow-cycle-copy" class="helper-text">-</span>
+                            </article>
+                            <article class="summary-card summary-card-wide timeseries-progress-card">
+                                <div class="summary-card-head">
+                                    <span class="card-label">Timeseries Progress</span>
+                                    <span id="timeseries-progress-chip" class="mini-chip">-</span>
+                                </div>
+                                <strong id="timeseries-progress-title">-</strong>
+                                <span id="timeseries-progress-copy" class="helper-text">-</span>
+                                <div
+                                    id="timeseries-progress-track"
+                                    class="timeseries-progress-track"
+                                    role="progressbar"
+                                    aria-label="Timeseries collection progress for 14 days"
+                                    aria-valuemin="0"
+                                    aria-valuemax="100"
+                                    aria-valuenow="0"
+                                >
+                                    <span id="timeseries-progress-bar" class="timeseries-progress-bar"></span>
+                                </div>
+                                <div class="timeseries-progress-meta">
+                                    <span id="timeseries-progress-detail">-</span>
+                                    <span>เต็มเมื่อครบ 14 วัน</span>
+                                </div>
                             </article>
                         </div>
                         <div class="actions">
@@ -632,12 +650,43 @@ function formatCountdownLabel(totalSeconds: number): string {
     return `${seconds}s`
 }
 
+function formatInteger(value: number | null | undefined): string {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+        return "-"
+    }
+
+    return new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 0,
+    }).format(value)
+}
+
 function getSensorIntervalSeconds(state: DashboardState | null = dashboardState): number {
     const configuredSeconds = state?.model_data?.sensor_interval_seconds
     if (configuredSeconds && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
         return configuredSeconds
     }
     return 3600
+}
+
+function formatSensorIntervalLabel(state: DashboardState | null = dashboardState): string {
+    const intervalSeconds = Math.max(1, getSensorIntervalSeconds(state))
+    if (intervalSeconds % 3600 === 0) {
+        return `${formatInteger(intervalSeconds / 3600)} ชั่วโมง`
+    }
+
+    const totalMinutes = intervalSeconds / 60
+    if (Number.isInteger(totalMinutes)) {
+        return `${formatInteger(totalMinutes)} นาที`
+    }
+
+    return `${formatNumber(totalMinutes, 1)} นาที`
+}
+
+function getTimeseriesRowsPerDay(state: DashboardState | null = dashboardState): number {
+    return Math.max(
+        1,
+        Math.round((24 * 60 * 60) / Math.max(1, getSensorIntervalSeconds(state))),
+    )
 }
 
 function getNextSensorSaveDate(state: DashboardState | null = dashboardState): Date | null {
@@ -695,6 +744,22 @@ function formatFullDateLabel(value: string | null | undefined): string {
     return new Intl.DateTimeFormat("th-TH", {
         dateStyle: "medium",
     }).format(parsed)
+}
+
+function getTimestampDayKey(
+    value: string | Date | null | undefined,
+    timeZone = getResolvedTimeZone(),
+): string | null {
+    if (!value) {
+        return null
+    }
+
+    const parsed = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+        return null
+    }
+
+    return getDateInputValueInTimeZone(parsed, timeZone)
 }
 
 function getResolvedTimeZone(state: DashboardState | null = dashboardState): string {
@@ -2154,6 +2219,112 @@ function renderNextSensorSaveCountdown(state: DashboardState | null = dashboardS
     copy.textContent = `บันทึกลง DB เวลา ${formatTimeOnly(nextSaveAt.toISOString())} • ทุก ${intervalMinutes} นาที`
 }
 
+function getTodayTimeseriesCount(state: DashboardState | null = dashboardState): number {
+    const cycleItems = getCycleTimeseriesItems(state)
+    const timeZone = getResolvedTimeZone(state)
+    const todayKey = getTimestampDayKey(new Date(), timeZone)
+    return cycleItems.filter((item) => (
+        getTimestampDayKey(item.timestamp, timeZone) === todayKey
+    )).length
+}
+
+function getCycleTimeseriesItems(state: DashboardState | null = dashboardState): SensorReading[] {
+    const cycleId = state?.grow_cycle?.cycle_id ?? state?.sensor?.cycle_id ?? null
+    const plantedAt = state?.grow_cycle?.planted_at ?? state?.sensor?.cycle_planted_at ?? null
+    const plantedAtMs = getTimestampValue(plantedAt)
+    const rowsPerDay = getTimeseriesRowsPerDay(state)
+    const fallbackLimit = rowsPerDay * 14
+
+    const filtered = sensorHistory.filter((item) => {
+        const itemTimestampMs = getTimestampValue(item.timestamp)
+        if (itemTimestampMs < 0) {
+            return false
+        }
+
+        if (cycleId && item.cycle_id && item.cycle_id !== cycleId) {
+            return false
+        }
+
+        if (plantedAtMs >= 0 && itemTimestampMs < plantedAtMs) {
+            return false
+        }
+
+        return true
+    })
+
+    return filtered.length > 0
+        ? filtered
+        : sensorHistory.slice(-fallbackLimit)
+}
+
+function renderTimeseriesProgressSummary(state: DashboardState | null = dashboardState): void {
+    const title = document.getElementById("timeseries-progress-title")
+    const chip = document.getElementById("timeseries-progress-chip")
+    const copy = document.getElementById("timeseries-progress-copy")
+    const detail = document.getElementById("timeseries-progress-detail")
+    const track = document.getElementById("timeseries-progress-track")
+    const bar = document.getElementById("timeseries-progress-bar")
+
+    if (
+        !(title instanceof HTMLElement) ||
+        !(chip instanceof HTMLElement) ||
+        !(copy instanceof HTMLElement) ||
+        !(detail instanceof HTMLElement) ||
+        !(track instanceof HTMLElement) ||
+        !(bar instanceof HTMLElement)
+    ) {
+        return
+    }
+
+    const rowsPerDay = getTimeseriesRowsPerDay(state)
+    const maxRows = rowsPerDay * 14
+    const cycleItems = getCycleTimeseriesItems(state)
+    const rowsInWindow = Math.max(
+        0,
+        Math.min(
+            cycleItems.length,
+            maxRows,
+        ),
+    )
+    const todayRows = Math.max(0, getTodayTimeseriesCount(state))
+    const collectedDays = rowsInWindow / rowsPerDay
+    const displayDays = Math.min(collectedDays, 14)
+    const progressPercent = Math.max(0, Math.min((rowsInWindow / maxRows) * 100, 100))
+    const intervalLabel = formatSensorIntervalLabel(state)
+
+    chip.textContent = `วันนี้ ${formatInteger(todayRows)}/${formatInteger(rowsPerDay)} รอบ`
+    track.setAttribute("aria-valuenow", progressPercent.toFixed(0))
+    bar.style.width = `${progressPercent}%`
+    detail.textContent = `${formatNumber(displayDays, displayDays >= 3 ? 1 : 2)} / 14 วัน`
+
+    if (rowsInWindow <= 0) {
+        title.textContent = "ยังไม่มีข้อมูลสะสม"
+        copy.textContent = `เมื่อเริ่มบันทึก temp/pH ทุก ${intervalLabel} หลอดนี้จะค่อย ๆ เต็มจากข้อมูลของรอบปลูกนี้`
+        return
+    }
+
+    if (rowsInWindow < rowsPerDay) {
+        title.textContent = `วันนี้เก็บแล้ว ${formatInteger(todayRows)}/${formatInteger(rowsPerDay)} รอบ`
+        copy.textContent = `อิงเฉพาะรอบปลูกนี้ • สะสมแล้ว ${formatInteger(rowsInWindow)}/${formatInteger(maxRows)} รอบ`
+        return
+    }
+
+    if (rowsInWindow < rowsPerDay * 7) {
+        title.textContent = `สะสมข้อมูลรายชั่วโมงแล้ว ${formatNumber(displayDays, displayDays >= 3 ? 1 : 2)} วัน`
+        copy.textContent = `อิงเฉพาะรอบปลูกนี้ • วันนี้เก็บเพิ่ม ${formatInteger(todayRows)}/${formatInteger(rowsPerDay)} รอบ`
+        return
+    }
+
+    if (rowsInWindow < maxRows) {
+        title.textContent = `สะสมข้อมูลรายชั่วโมงแล้ว ${formatNumber(displayDays / 7, 2)} สัปดาห์`
+        copy.textContent = `อิงเฉพาะรอบปลูกนี้ • วันนี้เก็บเพิ่ม ${formatInteger(todayRows)}/${formatInteger(rowsPerDay)} รอบ`
+        return
+    }
+
+    title.textContent = "สะสมข้อมูลรายชั่วโมงครบ 14 วันแล้ว"
+    copy.textContent = `อิงเฉพาะรอบปลูกนี้ • วันนี้เก็บเพิ่ม ${formatInteger(todayRows)}/${formatInteger(rowsPerDay)} รอบ`
+}
+
 function ensureNextSensorSaveTimer(): void {
     clearNextSensorSaveTimer()
     renderNextSensorSaveCountdown()
@@ -2551,7 +2722,6 @@ function syncCamera(): void {
 function renderLiveSnapshot(state: DashboardState): void {
     const sensor = state.sensor
     const light = state.actuators.light
-    const fertilizer = state.actuators.pump_fertilizer
     const cycle = state.grow_cycle
     const cycleProgress = getResolvedCycleProgress(state)
     const coverageSnapshot = getFreshCoverageSnapshot(state)
@@ -2573,6 +2743,7 @@ function renderLiveSnapshot(state: DashboardState): void {
         ? "อ้างอิงค่า temp / pH ล่าสุดในระบบ"
         : "ยังไม่มีข้อมูล temp / pH ล่าสุด"
     renderNextSensorSaveCountdown(state)
+    renderTimeseriesProgressSummary(state)
 
     const manualLightStatus = document.getElementById("manual-light-status")
     if (manualLightStatus) {
@@ -2585,7 +2756,6 @@ function renderLiveSnapshot(state: DashboardState): void {
             : "ไฟพร้อมสั่งงาน กด Turn On ได้ทันที"
     }
 
-    $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
     $("grow-cycle-status-chip").textContent = cycleProgress
         ? `DAY ${cycleProgress.dayIndex}/${targetDays ?? "-"}`
         : "IDLE"
@@ -2656,7 +2826,7 @@ async function refreshDashboard(silent = false): Promise<void> {
     try {
         const [state, sensorHistoryResponse, dailySummaryResponse] = await Promise.all([
             fetchDashboardState(),
-            fetchSensorHistory(48),
+            fetchSensorHistory(336),
             fetchDailySummaryHistory(14),
         ])
         dashboardState = state
