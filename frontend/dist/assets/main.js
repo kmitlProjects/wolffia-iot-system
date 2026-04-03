@@ -310,16 +310,24 @@ function createLayout() {
                                 </h3>
                                 <p>สั่งไฟแบบ manual หรือวางรอบเปิดปิดอัตโนมัติจาก card เดียวกัน</p>
                             </div>
-                            <div class="actions">
-                                <button id="light-on-button" class="button-primary" type="button">
-                                    Turn On
-                                </button>
-                                <button id="light-off-button" class="button-secondary" type="button">
-                                    Turn Off
-                                </button>
-                            </div>
-                            <div class="control-divider"></div>
-                            <section class="schedule-builder">
+                            <section class="control-surface">
+                                <div class="control-surface-head">
+                                    <div>
+                                        <span class="card-label">Manual Light</span>
+                                        <strong>สั่งไฟทันที</strong>
+                                    </div>
+                                    <span class="helper-text">ใช้สำหรับเปิดหรือปิดไฟทันทีจากหน้า dashboard</span>
+                                </div>
+                                <div class="actions control-actions">
+                                    <button id="light-on-button" class="button-primary" type="button">
+                                        Turn On
+                                    </button>
+                                    <button id="light-off-button" class="button-secondary" type="button">
+                                        Turn Off
+                                    </button>
+                                </div>
+                            </section>
+                            <section class="schedule-builder scheduler-builder">
                                 <div class="schedule-builder-head">
                                     <div>
                                         <span class="card-label">Light Schedule</span>
@@ -327,7 +335,7 @@ function createLayout() {
                                     </div>
                                     <span class="helper-text">เลือกวันและช่วงเวลาให้ไฟทำงานอัตโนมัติ</span>
                                 </div>
-                                <form id="light-schedule-form" class="stack">
+                                <form id="light-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
                                         <label for="light-on-time">
                                             On time
@@ -339,7 +347,7 @@ function createLayout() {
                                         </label>
                                     </div>
                                     <div id="light-days" class="day-grid"></div>
-                                    <button class="button-primary" type="submit">
+                                    <button class="button-primary schedule-submit-button" type="submit">
                                         Add Light Schedule
                                     </button>
                                 </form>
@@ -357,25 +365,33 @@ function createLayout() {
                                 </h3>
                                 <p>กรอกลิตรน้ำที่ต้องการ แล้วระบบจะคำนวณเวลาเปิดปั๊มจากอัตราไหลให้อัตโนมัติ</p>
                             </div>
-                            <div class="inline-fields">
-                                <label for="manual-water-liters">
-                                    ปริมาณน้ำ (L)
-                                    <input id="manual-water-liters" min="0.1" step="0.1" type="number" value="1">
-                                </label>
-                            </div>
-                            <div id="water-pump-helper-copy" class="helper-text">
-                                อัตราไหลปั๊มน้ำ 1 L/min
-                            </div>
-                            <div class="actions">
-                                <button id="water-start-button" class="button-primary" type="button">
-                                    Start Pump
-                                </button>
-                                <button id="water-stop-button" class="button-danger" type="button">
-                                    Stop Pump
-                                </button>
-                            </div>
-                            <div class="control-divider"></div>
-                            <section class="schedule-builder">
+                            <section class="control-surface">
+                                <div class="control-surface-head">
+                                    <div>
+                                        <span class="card-label">Manual Water Pump</span>
+                                        <strong>สั่งปั๊มน้ำทันที</strong>
+                                    </div>
+                                    <span class="helper-text">กรอกลิตรที่ต้องการ แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</span>
+                                </div>
+                                <div class="control-input-grid">
+                                    <label for="manual-water-liters">
+                                        ปริมาณน้ำ (L)
+                                        <input id="manual-water-liters" min="0.1" step="0.1" type="number" value="1">
+                                    </label>
+                                </div>
+                                <div id="water-pump-helper-copy" class="helper-text control-surface-copy">
+                                    อัตราไหลปั๊มน้ำ 1 L/min
+                                </div>
+                                <div class="actions control-actions">
+                                    <button id="water-start-button" class="button-primary" type="button">
+                                        Start Pump
+                                    </button>
+                                    <button id="water-stop-button" class="button-danger" type="button">
+                                        Stop Pump
+                                    </button>
+                                </div>
+                            </section>
+                            <section class="schedule-builder scheduler-builder">
                                 <div class="schedule-builder-head">
                                     <div>
                                         <span class="card-label">Water Pump Schedule</span>
@@ -383,7 +399,7 @@ function createLayout() {
                                     </div>
                                     <span class="helper-text">กำหนดเวลา วัน และจำนวนลิตรที่ต้องการในแต่ละรอบ</span>
                                 </div>
-                                <form id="pump-water-schedule-form" class="stack">
+                                <form id="pump-water-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
                                         <label for="pump-water-start-time">
                                             Start time
@@ -401,7 +417,7 @@ function createLayout() {
                                         </label>
                                     </div>
                                     <div id="pump-water-days" class="day-grid"></div>
-                                    <button class="button-primary" type="submit">
+                                    <button class="button-primary schedule-submit-button" type="submit">
                                         Add Water Pump Schedule
                                     </button>
                                 </form>
