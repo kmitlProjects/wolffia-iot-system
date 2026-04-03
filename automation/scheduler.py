@@ -57,6 +57,26 @@ def normalize_time_value(value: str):
     return parsed.strftime("%H:%M")
 
 
+def normalize_start_date(value: str | None, timezone_name: str):
+    if value in (None, ""):
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError("start_date must be a string in YYYY-MM-DD format")
+
+    try:
+        parsed = datetime.strptime(value.strip(), "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("start_date must be in YYYY-MM-DD format") from exc
+
+    normalized = parsed.strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
+    if normalized < today:
+        raise ValueError("start_date cannot be in the past")
+
+    return normalized
+
+
 def normalize_days(days):
     if not isinstance(days, list) or not days:
         raise ValueError("days must be a non-empty list")
@@ -89,6 +109,7 @@ def serialize_rule(document):
         "device": document["device"],
         "enabled": bool(document.get("enabled", True)),
         "days": list(document.get("days", [])),
+        "start_date": document.get("start_date"),
         "created_at": document.get("created_at").isoformat()
         if document.get("created_at") is not None
         else None,
@@ -150,7 +171,14 @@ class AutomationScheduler:
         )
         return [serialize_rule(document) for document in documents]
 
-    def create_light_rule(self, on_time: str, off_time: str, days, enabled: bool = True):
+    def create_light_rule(
+        self,
+        on_time: str,
+        off_time: str,
+        days,
+        enabled: bool = True,
+        start_date: str | None = None,
+    ):
         normalized_on = normalize_time_value(on_time)
         normalized_off = normalize_time_value(off_time)
         if normalized_on == normalized_off:
@@ -160,6 +188,7 @@ class AutomationScheduler:
             "device": "light",
             "enabled": bool(enabled),
             "days": normalize_days(days),
+            "start_date": normalize_start_date(start_date, self.timezone_name),
             "on_time": normalized_on,
             "off_time": normalized_off,
             "last_triggered": {"on": None, "off": None},
@@ -176,6 +205,7 @@ class AutomationScheduler:
         water_liters: float | None,
         days,
         enabled: bool = True,
+        start_date: str | None = None,
     ):
         duration_seconds = float(duration_seconds)
         if duration_seconds <= 0:
@@ -185,6 +215,7 @@ class AutomationScheduler:
             "device": "pump_water",
             "enabled": bool(enabled),
             "days": normalize_days(days),
+            "start_date": normalize_start_date(start_date, self.timezone_name),
             "start_time": normalize_time_value(start_time),
             "duration_seconds": duration_seconds,
             "water_liters": float(water_liters) if water_liters is not None else None,
@@ -242,6 +273,10 @@ class AutomationScheduler:
 
         rules = list(self.collection.find({"enabled": True}))
         for rule in rules:
+            start_date = rule.get("start_date")
+            if start_date and today_key < start_date:
+                continue
+
             days = rule.get("days") or []
             if weekday not in days:
                 continue

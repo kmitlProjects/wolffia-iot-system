@@ -879,6 +879,7 @@ label {
     height: 100%;
     gap: 1.15rem;
     align-content: start;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .control-grid > .panel .panel-title {
@@ -1136,7 +1137,7 @@ label {
 
 .schedule-time-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 0.7rem;
 }
 
@@ -1202,7 +1203,7 @@ label {
 }
 
 .schedule-rule-grid .rule-empty {
-    min-height: 5rem;
+    min-height: 6.25rem;
     display: grid;
     align-items: center;
     padding: 1.1rem 1.2rem;
@@ -1435,11 +1436,15 @@ label {
     }
 
     .control-surface {
-        min-height: 11rem;
+        min-height: 13rem;
     }
 
     .scheduler-builder {
-        min-height: 23.5rem;
+        min-height: 26rem;
+    }
+
+    .scheduler-builder .inline-fields {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .scheduler-builder .day-grid {

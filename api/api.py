@@ -175,6 +175,7 @@ class PumpFertilizerRequest(BaseModel):
 class AutomationBaseRequest(BaseModel):
     days: list[str]
     enabled: bool = True
+    start_date: str | None = None
 
 
 class LightAutomationRequest(AutomationBaseRequest):
@@ -899,6 +900,7 @@ def create_light_automation_rule(payload: LightAutomationRequest):
             payload.off_time,
             payload.days,
             enabled=payload.enabled,
+            start_date=payload.start_date,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -911,7 +913,7 @@ async def create_pump_water_automation_rule(request: Request):
         payload = await _parse_request_model(
             request,
             PumpWaterAutomationRequest,
-            query_fields=("start_time", "duration_seconds", "water_liters", "enabled"),
+            query_fields=("start_time", "duration_seconds", "water_liters", "enabled", "start_date"),
         )
         duration_seconds, water_liters = resolve_water_pump_duration_seconds(payload)
         rule = automation_scheduler.create_pump_water_rule(
@@ -920,6 +922,7 @@ async def create_pump_water_automation_rule(request: Request):
             water_liters,
             payload.days,
             enabled=payload.enabled,
+            start_date=payload.start_date,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

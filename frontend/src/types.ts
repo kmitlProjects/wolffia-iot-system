@@ -195,6 +195,7 @@ export interface LightRule {
     device: "light"
     enabled: boolean
     days: string[]
+    start_date?: string | null
     on_time: string
     off_time: string
     created_at?: string | null
@@ -206,6 +207,7 @@ export interface PumpWaterRule {
     device: "pump_water"
     enabled: boolean
     days: string[]
+    start_date?: string | null
     start_time: string
     duration_seconds: number
     water_liters?: number | null
@@ -309,6 +311,7 @@ export interface LightSchedulePayload {
     on_time: string
     off_time: string
     days: string[]
+    start_date?: string | null
     enabled: boolean
 }
 
@@ -316,5 +319,6 @@ export interface PumpWaterSchedulePayload {
     start_time: string
     water_liters: number
     days: string[]
+    start_date?: string | null
     enabled: boolean
 }

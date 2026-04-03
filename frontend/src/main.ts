@@ -50,6 +50,7 @@ const LIVE_ANALYSIS_REFRESH_MS = 8000
 const LIVE_ANALYSIS_RETRY_MS = 10000
 const DEFAULT_WATER_PUMP_LITERS = "1"
 const DEFAULT_FERTILIZER_WATER_LITERS = "10"
+const FALLBACK_TIMEZONE = "Asia/Bangkok"
 
 let dashboardState: DashboardState | null = null
 let sensorHistory: SensorReading[] = []
@@ -336,10 +337,14 @@ function createLayout(): string {
                                         <span class="card-label">Light Schedule</span>
                                         <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
                                     </div>
-                                    <span class="helper-text">เลือกวันและช่วงเวลาให้ไฟทำงานอัตโนมัติ</span>
+                                    <span class="helper-text">เลือกวันที่เริ่มใช้ วัน และช่วงเวลา ระบบจะไม่รับวันย้อนหลัง</span>
                                 </div>
                                 <form id="light-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
+                                        <label for="light-start-date">
+                                            Start date
+                                            <input id="light-start-date" type="date">
+                                        </label>
                                         <label for="light-on-time">
                                             On time
                                             <input id="light-on-time" type="time" value="18:00">
@@ -400,10 +405,14 @@ function createLayout(): string {
                                         <span class="card-label">Water Pump Schedule</span>
                                         <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
                                     </div>
-                                    <span class="helper-text">กำหนดเวลา วัน และจำนวนลิตรที่ต้องการในแต่ละรอบ</span>
+                                    <span class="helper-text">เลือกวันที่เริ่มใช้ เวลา วัน และจำนวนลิตรที่ต้องการในแต่ละรอบ</span>
                                 </div>
                                 <form id="pump-water-schedule-form" class="stack scheduler-form">
                                     <div class="inline-fields">
+                                        <label for="pump-water-start-date">
+                                            Start date
+                                            <input id="pump-water-start-date" type="date">
+                                        </label>
                                         <label for="pump-water-start-time">
                                             Start time
                                             <input id="pump-water-start-time" type="time" value="08:00">
@@ -582,6 +591,80 @@ function formatDateLabel(value: string | null | undefined): string {
         month: "short",
         day: "numeric",
     }).format(parsed)
+}
+
+function formatFullDateLabel(value: string | null | undefined): string {
+    if (!value) {
+        return "-"
+    }
+
+    const parsed = value.includes("T")
+        ? new Date(value)
+        : new Date(`${value}T00:00:00`)
+    if (Number.isNaN(parsed.getTime())) {
+        return value
+    }
+
+    return new Intl.DateTimeFormat("th-TH", {
+        dateStyle: "medium",
+    }).format(parsed)
+}
+
+function getResolvedTimeZone(state: DashboardState | null = dashboardState): string {
+    return state?.meta.timezone || FALLBACK_TIMEZONE
+}
+
+function getDateInputValueInTimeZone(date: Date, timeZone = getResolvedTimeZone()): string {
+    const parts = new Intl.DateTimeFormat("en", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(date)
+
+    const year = parts.find((part) => part.type === "year")?.value ?? ""
+    const month = parts.find((part) => part.type === "month")?.value ?? ""
+    const day = parts.find((part) => part.type === "day")?.value ?? ""
+
+    return `${year}-${month}-${day}`
+}
+
+function getTodayScheduleDateValue(timeZone = getResolvedTimeZone()): string {
+    return getDateInputValueInTimeZone(new Date(), timeZone)
+}
+
+function syncScheduleDateInputs(state: DashboardState | null = dashboardState): void {
+    const today = getTodayScheduleDateValue(getResolvedTimeZone(state))
+
+    ;["light-start-date", "pump-water-start-date"].forEach((inputId) => {
+        const input = document.getElementById(inputId) as HTMLInputElement | null
+        if (!input) {
+            return
+        }
+
+        input.min = today
+        if (!input.value || input.value < today) {
+            input.value = today
+        }
+    })
+}
+
+function readScheduleStartDate(inputId: string): string {
+    const input = document.getElementById(inputId) as HTMLInputElement | null
+    const value = input?.value?.trim() ?? ""
+    if (!value) {
+        throw new Error("กรุณาเลือกวันที่เริ่มใช้งาน")
+    }
+
+    const today = getTodayScheduleDateValue()
+    if (value < today) {
+        if (input) {
+            input.value = today
+        }
+        throw new Error("กรุณาเลือกวันที่ปัจจุบันหรือวันในอนาคต")
+    }
+
+    return value
 }
 
 function slugToFriendlyLabel(value: string | null | undefined): string {
@@ -1539,21 +1622,28 @@ function renderDailySummarySection(
 
 function renderLightRules(rules: LightRule[]): void {
     const container = $("light-rule-list")
+    const today = getTodayScheduleDateValue()
     if (rules.length === 0) {
         container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี light schedule</div>`
         return
     }
 
     container.innerHTML = rules.map(
-        (rule) => `
+        (rule) => {
+            const isPending = Boolean(rule.start_date && rule.start_date > today)
+            const statusTone = !rule.enabled ? "danger" : isPending ? "warning" : "active"
+            const statusText = !rule.enabled ? "Disabled" : isPending ? "Starts later" : "Enabled"
+            const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้"
+
+            return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Light Schedule</span>
                         <strong>เปิดปิดไฟอัตโนมัติประจำสัปดาห์</strong>
                     </div>
-                    <span class="mini-chip ${rule.enabled ? "active" : "danger"}">
-                        ${rule.enabled ? "Enabled" : "Disabled"}
+                    <span class="mini-chip ${statusTone}">
+                        ${statusText}
                     </span>
                 </div>
                 <div class="schedule-day-chips">
@@ -1568,6 +1658,10 @@ function renderLightRules(rules: LightRule[]): void {
                         <span>Off</span>
                         <strong>${escapeHtml(rule.off_time)}</strong>
                     </div>
+                    <div class="schedule-time-box">
+                        <span>Start date</span>
+                        <strong>${escapeHtml(startDateLabel)}</strong>
+                    </div>
                 </div>
                 <div class="schedule-rule-actions">
                     <label class="day-option schedule-toggle">
@@ -1589,27 +1683,35 @@ function renderLightRules(rules: LightRule[]): void {
                     </button>
                 </div>
             </article>
-        `,
+        `
+        },
     ).join("")
 }
 
 function renderPumpWaterRules(rules: PumpWaterRule[]): void {
     const container = $("pump-water-rule-list")
+    const today = getTodayScheduleDateValue()
     if (rules.length === 0) {
         container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี water pump schedule</div>`
         return
     }
 
     container.innerHTML = rules.map(
-        (rule) => `
+        (rule) => {
+            const isPending = Boolean(rule.start_date && rule.start_date > today)
+            const statusTone = !rule.enabled ? "danger" : isPending ? "warning" : "active"
+            const statusText = !rule.enabled ? "Disabled" : isPending ? "Starts later" : "Enabled"
+            const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้"
+
+            return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Water Pump Schedule</span>
                         <strong>รอบให้น้ำอัตโนมัติประจำสัปดาห์</strong>
                     </div>
-                    <span class="mini-chip ${rule.enabled ? "active" : "danger"}">
-                        ${rule.enabled ? "Enabled" : "Disabled"}
+                    <span class="mini-chip ${statusTone}">
+                        ${statusText}
                     </span>
                 </div>
                 <div class="schedule-day-chips">
@@ -1624,6 +1726,10 @@ function renderPumpWaterRules(rules: PumpWaterRule[]): void {
                         <span>Water</span>
                         <strong>${formatNumber(rule.water_liters, 2)} L</strong>
                     </div>
+                    <div class="schedule-time-box">
+                        <span>Start date</span>
+                        <strong>${escapeHtml(startDateLabel)}</strong>
+                    </div>
                 </div>
                 <div class="schedule-rule-actions">
                     <label class="day-option schedule-toggle">
@@ -1645,7 +1751,8 @@ function renderPumpWaterRules(rules: PumpWaterRule[]): void {
                     </button>
                 </div>
             </article>
-        `,
+        `
+        },
     ).join("")
 }
 
@@ -2253,6 +2360,7 @@ function renderDashboard(state: DashboardState): void {
 
     $("timezone-chip").textContent = `TZ: ${state.meta.timezone}`
     $("generated-at").textContent = formatTimestamp(state.meta.generated_at)
+    syncScheduleDateInputs(state)
 
     const seedCycleInput = document.getElementById("seed-cycle-id-input") as HTMLInputElement | null
     const modelDataCopy = document.getElementById("model-data-upload-copy") as HTMLElement | null
@@ -2659,6 +2767,7 @@ function bindEvents(): void {
     $("light-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault()
         const onTime = (document.getElementById("light-on-time") as HTMLInputElement).value
+        const startDate = readScheduleStartDate("light-start-date")
         const offTime = (document.getElementById("light-off-time") as HTMLInputElement).value
         const days = collectDays("light-days")
 
@@ -2672,6 +2781,7 @@ function bindEvents(): void {
                 on_time: onTime,
                 off_time: offTime,
                 days,
+                start_date: startDate,
                 enabled: true,
             })
         })
@@ -2679,6 +2789,7 @@ function bindEvents(): void {
 
     $("pump-water-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault()
+        const startDate = readScheduleStartDate("pump-water-start-date")
         const startTime = (document.getElementById("pump-water-start-time") as HTMLInputElement).value
         const days = collectDays("pump-water-days")
 
@@ -2692,6 +2803,7 @@ function bindEvents(): void {
                 start_time: startTime,
                 water_liters: readPositiveNumber("pump-water-schedule-liters"),
                 days,
+                start_date: startDate,
                 enabled: true,
             })
         })
@@ -2720,6 +2832,7 @@ async function bootstrap(): Promise<void> {
     root.innerHTML = createLayout()
     renderDayOptions("light-days", "light-days")
     renderDayOptions("pump-water-days", "pump-water-days")
+    syncScheduleDateInputs(null)
     bindEvents()
     syncCamera()
     void refreshLiveCameraAnalysis(true)
