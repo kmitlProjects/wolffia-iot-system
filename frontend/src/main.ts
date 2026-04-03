@@ -322,6 +322,15 @@ function createLayout(): string {
                                     </div>
                                     <span class="helper-text">ใช้สำหรับเปิดหรือปิดไฟทันทีจากหน้า dashboard</span>
                                 </div>
+                                <div class="control-input-grid control-input-grid-passive">
+                                    <div class="control-input-card">
+                                        <span>สถานะไฟตอนนี้</span>
+                                        <strong id="manual-light-status">OFF</strong>
+                                    </div>
+                                </div>
+                                <div id="light-manual-copy" class="helper-text control-surface-copy">
+                                    พร้อมสั่งงานจากการ์ดนี้ได้ทันที
+                                </div>
                                 <div class="actions control-actions">
                                     <button id="light-on-button" class="button-primary" type="button">
                                         Turn On
@@ -2430,6 +2439,16 @@ function renderLiveSnapshot(state: DashboardState): void {
     $("light-mode-copy").textContent = light.is_on
         ? "ไฟกำลังทำงานอยู่"
         : "พร้อมสั่งงานแบบ manual หรือ schedule"
+    const manualLightStatus = document.getElementById("manual-light-status")
+    if (manualLightStatus) {
+        manualLightStatus.textContent = light.is_on ? "ON" : "OFF"
+    }
+    const manualLightCopy = document.getElementById("light-manual-copy")
+    if (manualLightCopy) {
+        manualLightCopy.textContent = light.is_on
+            ? "ไฟกำลังทำงานอยู่ กด Turn Off ได้ทันที"
+            : "ไฟพร้อมสั่งงาน กด Turn On ได้ทันที"
+    }
 
     $("pump-water-status-chip").textContent = waterPump.is_running
         ? "RUNNING"
