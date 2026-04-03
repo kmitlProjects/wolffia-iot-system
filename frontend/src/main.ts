@@ -320,16 +320,16 @@ function createLayout(): string {
                                         <span class="card-label">Manual Light</span>
                                         <strong>สั่งไฟทันที</strong>
                                     </div>
-                                    <span class="helper-text">ใช้สำหรับเปิดหรือปิดไฟทันทีจากหน้า dashboard</span>
+                                    <span class="helper-text">เปิดหรือปิดไฟทันทีจากการ์ดนี้</span>
                                 </div>
-                                <div class="control-input-grid control-input-grid-passive">
-                                    <div class="control-input-card">
-                                        <span>สถานะไฟตอนนี้</span>
-                                        <strong id="manual-light-status">OFF</strong>
-                                    </div>
+                                <div class="control-input-grid">
+                                    <label for="manual-light-status">
+                                        สถานะไฟตอนนี้
+                                        <div id="manual-light-status" class="control-display-field">OFF</div>
+                                    </label>
                                 </div>
                                 <div id="light-manual-copy" class="helper-text control-surface-copy">
-                                    พร้อมสั่งงานจากการ์ดนี้ได้ทันที
+                                    ไฟพร้อมสั่งงาน กด Turn On หรือ Turn Off ได้ทันที
                                 </div>
                                 <div class="actions control-actions">
                                     <button id="light-on-button" class="button-primary" type="button">
@@ -391,7 +391,7 @@ function createLayout(): string {
                                         <span class="card-label">Manual Water Pump</span>
                                         <strong>สั่งปั๊มน้ำทันที</strong>
                                     </div>
-                                    <span class="helper-text">กรอกลิตรที่ต้องการ แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</span>
+                                    <span class="helper-text">กรอกลิตรแล้วสั่งปั๊มได้ทันที</span>
                                 </div>
                                 <div class="control-input-grid">
                                     <label for="manual-water-liters">
