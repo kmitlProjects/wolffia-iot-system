@@ -88,6 +88,10 @@ function escapeHtml(value: string): string {
         .replaceAll("'", "&#39;")
 }
 
+function renderIcon(filename: string, label: string, className = "ui-icon"): string {
+    return `<img src="/assets/icon/${filename}" class="${className}" alt="" aria-hidden="true">`
+}
+
 function createLayout(): string {
     return `
         <div class="app-shell">
@@ -95,10 +99,9 @@ function createLayout(): string {
                 <div class="hero-header">
                     <div class="hero-copy">
                         <span class="eyebrow">Wolffia Dashboard</span>
-                        <h1>ภาพสด ควบคุมอุปกรณ์ และข้อมูลพร้อมทำโมเดล</h1>
+                        <h1>ภาพสด ควบคุมอุปกรณ์ และข้อมูลสำคัญในหน้าเดียว</h1>
                         <p>
-                            เรียงข้อมูลตามลำดับการใช้งานจริง:
-                            ดูบ่อ, เช็กค่าล่าสุด, ย้อนดู time series และเตรียมส่งเข้าโมเดล
+                            หน้าเดียวสำหรับดูบ่อ เช็กค่าล่าสุด ควบคุมอุปกรณ์ และดูข้อมูลที่จำเป็นก่อนตัดสินใจ
                         </p>
                     </div>
                     <div class="hero-summary-grid">
@@ -118,18 +121,18 @@ function createLayout(): string {
                         <article class="hero-stat-card">
                             <span class="card-label">โฟลว์ข้อมูล</span>
                             <div class="hero-feature-list">
-                                <span class="mini-chip">Camera + ROI</span>
-                                <span class="mini-chip">Hourly MongoDB</span>
-                                <span class="mini-chip">Prediction-ready</span>
+                                <span class="mini-chip">Live camera</span>
+                                <span class="mini-chip">Sensor history</span>
+                                <span class="mini-chip">Harvest prediction</span>
                             </div>
-                            <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และตรวจข้อมูลก่อนทำโมเดล</span>
+                            <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และดูข้อมูลที่ต้องใช้ก่อนตัดสินใจ</span>
                         </article>
                     </div>
                 </div>
             </header>
 
             <main class="dashboard-grid">
-                <section class="panel camera-panel">
+                <section id="camera-section" class="panel camera-panel">
                     <div class="panel-inner">
                         <div class="panel-header">
                             <div class="panel-title">
@@ -164,7 +167,7 @@ function createLayout(): string {
                     </div>
                 </section>
 
-                <section class="panel status-panel">
+                <section id="status-section" class="panel status-panel">
                     <div class="panel-inner">
                         <div class="panel-title">
                             <h2>Live Snapshot</h2>
@@ -226,19 +229,16 @@ function createLayout(): string {
                 </section>
 
                 <section class="analytics-grid">
-                    <section class="panel analysis-hub-panel">
+                    <section id="analysis-section" class="panel analysis-hub-panel">
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
-                                    <h2>Capture &amp; Model Data</h2>
-                                    <p>สรุปข้อมูลที่ระบบเก็บจริงและจะถูกใช้ต่อใน feature builder สำหรับโมเดล</p>
+                                    <h2>Model Data (Advanced)</h2>
+                                    <p>ข้อมูลสำหรับ dataset และ workflow โมเดล ใช้เมื่อจำเป็น</p>
                                 </div>
                                 <div class="panel-actions">
                                     <button id="analysis-refresh-button" class="button-ghost" type="button">
                                         Refresh Hub
-                                    </button>
-                                    <button id="export-dataset-button" class="button-primary" type="button">
-                                        Export Dataset
                                     </button>
                                 </div>
                             </div>
@@ -246,48 +246,56 @@ function createLayout(): string {
                             <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
                             <div id="analysis-footer-note" class="analysis-note"></div>
-                            <section class="schedule-builder">
-                                <div class="schedule-builder-head">
-                                    <div>
-                                        <span class="card-label">Model Data / Advanced</span>
-                                        <strong>Import Historical temp/pH</strong>
+                            <details class="advanced-tools">
+                                <summary>Advanced import / export tools</summary>
+                                <section class="schedule-builder">
+                                    <div class="schedule-builder-head">
+                                        <div>
+                                            <span class="card-label">Model Data / Advanced</span>
+                                            <strong>Import Historical temp/pH</strong>
+                                        </div>
+                                        <span class="helper-text">
+                                            ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังหรือ export dataset ไป train model
+                                        </span>
                                     </div>
-                                    <span class="helper-text">
-                                        ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังเข้า Mongo ไม่จำเป็นสำหรับการกด Predict Harvest ทุกครั้ง
-                                    </span>
-                                </div>
-                                <div class="model-data-tools">
-                                    <label for="seed-cycle-id-input">
-                                        Seed Cycle ID
-                                        <input
-                                            id="seed-cycle-id-input"
-                                            type="text"
-                                            placeholder="seed_cycle_..."
-                                        >
-                                    </label>
-                                    <label for="seed-readings-file-input">
-                                        Import Historical temp/pH CSV
-                                        <input
-                                            id="seed-readings-file-input"
-                                            type="file"
-                                            accept=".csv,text/csv"
-                                        >
-                                    </label>
-                                    <button id="download-template-button" class="button-secondary" type="button">
-                                        Download CSV Template
-                                    </button>
-                                    <button id="upload-template-button" class="button-secondary" type="button">
-                                        Import CSV
-                                    </button>
-                                </div>
-                                <div id="model-data-upload-copy" class="helper-text">
-                                    ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
-                                </div>
-                            </section>
+                                    <div class="panel-actions">
+                                        <button id="export-dataset-button" class="button-primary" type="button">
+                                            Export Dataset
+                                        </button>
+                                        <button id="download-template-button" class="button-secondary" type="button">
+                                            Download CSV Template
+                                        </button>
+                                    </div>
+                                    <div class="model-data-tools">
+                                        <label for="seed-cycle-id-input">
+                                            Seed Cycle ID
+                                            <input
+                                                id="seed-cycle-id-input"
+                                                type="text"
+                                                placeholder="seed_cycle_..."
+                                            >
+                                        </label>
+                                        <label for="seed-readings-file-input">
+                                            Import Historical temp/pH CSV
+                                            <input
+                                                id="seed-readings-file-input"
+                                                type="file"
+                                                accept=".csv,text/csv"
+                                            >
+                                        </label>
+                                        <button id="upload-template-button" class="button-secondary" type="button">
+                                            Import CSV
+                                        </button>
+                                    </div>
+                                    <div id="model-data-upload-copy" class="helper-text">
+                                        ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
+                                    </div>
+                                </section>
+                            </details>
                         </div>
                     </section>
 
-                    <section class="panel timeseries-panel">
+                    <section id="timeseries-section" class="panel timeseries-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h2>Coverage Time Series</h2>
@@ -319,7 +327,7 @@ function createLayout(): string {
                         </div>
                     </section>
 
-                    <section class="panel prediction-panel">
+                    <section id="prediction-section" class="panel prediction-panel">
                         <div class="panel-inner">
                             <div class="panel-header">
                                 <div class="panel-title">
@@ -343,7 +351,7 @@ function createLayout(): string {
                 </section>
 
                 <section class="control-grid">
-                    <section class="panel light-control-panel">
+                    <section id="light-section" class="panel light-control-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h3>Light Control</h3>
@@ -387,7 +395,7 @@ function createLayout(): string {
                         </div>
                     </section>
 
-                    <section class="panel">
+                    <section id="water-section" class="panel">
                         <div class="panel-inner">
                             <div class="panel-title">
                                 <h3>Water Pump</h3>
@@ -447,13 +455,11 @@ function createLayout(): string {
                     </section>
                 </section>
 
-                <section class="panel">
+                <section id="fertilizer-section" class="panel">
                     <div class="panel-inner">
-                        <div class="panel-header">
-                            <div class="panel-title">
-                                <h2>Fertilizer Pumps</h2>
-                                <p>กรอกปริมาณน้ำต่อหัวปั๊ม แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</p>
-                            </div>
+                        <div class="panel-title">
+                            <h2>Fertilizer Pumps</h2>
+                            <p>กรอกปริมาณน้ำต่อหัวปั๊ม แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</p>
                         </div>
                         <div id="pump-fertilizer-list" class="fertilizer-grid"></div>
                     </div>
@@ -774,6 +780,276 @@ function setConnectionStatus(online: boolean, detail: string): void {
     badge.textContent = detail
     badge.classList.toggle("online", online)
     badge.classList.toggle("offline", !online)
+}
+
+function setMiniChipTone(
+    element: HTMLElement,
+    tone: "default" | "active" | "danger" | "warning",
+): void {
+    element.classList.remove("active", "danger", "warning")
+    if (tone !== "default") {
+        element.classList.add(tone)
+    }
+}
+
+function setMiniChip(
+    id: string,
+    text: string,
+    tone: "default" | "active" | "danger" | "warning" = "default",
+): void {
+    const element = $(id)
+    element.textContent = text
+    setMiniChipTone(element, tone)
+}
+
+function getMinutesSince(value: string | null | undefined): number | null {
+    if (!value) {
+        return null
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+        return null
+    }
+
+    const diff = Date.now() - parsed.getTime()
+    return Math.max(Math.round(diff / 60000), 0)
+}
+
+function formatRelativeAge(value: string | null | undefined): string {
+    const minutes = getMinutesSince(value)
+    if (minutes === null) {
+        return "No data"
+    }
+    if (minutes < 60) {
+        return `${minutes} min ago`
+    }
+    if (minutes < 24 * 60) {
+        return `${formatNumber(minutes / 60, 1)} h ago`
+    }
+    return `${formatNumber(minutes / (24 * 60), 1)} d ago`
+}
+
+function buildRecommendedAction(
+    state: DashboardState,
+    cycleProgress: ReturnType<typeof getCycleProgress>,
+): {
+    icon: string
+    label: string
+    copy: string
+    href: string
+} {
+    const enabledLightRules = state.automation.light.filter((rule) => rule.enabled).length
+    const enabledWaterRules = state.automation.pump_water.filter((rule) => rule.enabled).length
+    const sensorAgeMinutes = getMinutesSince(state.sensor?.timestamp)
+
+    if (!cycleProgress) {
+        return {
+            icon: "calendar.svg",
+            label: "เริ่ม Grow Cycle",
+            copy: "ยังไม่มี active cycle ทำให้ข้อมูลชุดใหม่ยังไม่ถูกผูกกับรอบปลูกสำหรับ prediction",
+            href: "#status-section",
+        }
+    }
+
+    if (sensorAgeMinutes !== null && sensorAgeMinutes > 240) {
+        return {
+            icon: "network.svg",
+            label: "ตรวจ sensor / MQTT flow",
+            copy: "ข้อมูลล่าสุดค่อนข้างเก่า ควรเช็ก ingestion ก่อนใช้ค่าชุดนี้ตัดสินใจ",
+            href: "#status-section",
+        }
+    }
+
+    if (enabledWaterRules === 0) {
+        return {
+            icon: "waterPump.svg",
+            label: "ตั้ง Water Schedule",
+            copy: "ตอนนี้ water pump ยังไม่มี automation rule ถ้าต้องการให้ระบบรันเองควรตั้งไว้ก่อน",
+            href: "#water-section",
+        }
+    }
+
+    if (enabledLightRules === 0) {
+        return {
+            icon: "LightRelay.svg",
+            label: "ตั้ง Light Schedule",
+            copy: "light relay ยังเป็น manual-first อยู่ ควรเพิ่ม schedule ถ้าต้องการให้ flow คงที่",
+            href: "#light-section",
+        }
+    }
+
+    if (state.model_data?.harvest_model_enabled) {
+        return {
+            icon: "HarvestPredict.svg",
+            label: "ลอง Predict Harvest",
+            copy: "เมื่อ cycle กับข้อมูลล่าสุดพร้อมแล้ว คุณสามารถ preview ความพร้อมของโมเดลและวันเก็บเกี่ยวได้ทันที",
+            href: "#prediction-section",
+        }
+    }
+
+    return {
+        icon: "camera.svg",
+        label: "ติดตามภาพสดและ time series",
+        copy: "โฟลว์หลักพร้อมแล้ว ใช้ภาพสดและกราฟย้อนหลังเพื่อประเมินบ่อก่อนสั่งงานรอบถัดไป",
+        href: "#camera-section",
+    }
+}
+
+function renderOperatorFocus(state: DashboardState): void {
+    const container = $("ops-focus-grid")
+    const cycle = state.grow_cycle
+    const cycleProgress = getCycleProgress(cycle, state.meta.generated_at)
+    const enabledLightRules = state.automation.light.filter((rule) => rule.enabled).length
+    const enabledWaterRules = state.automation.pump_water.filter((rule) => rule.enabled).length
+    const sensorAgeMinutes = getMinutesSince(state.sensor?.timestamp)
+    const sensorTone = sensorAgeMinutes === null
+        ? "danger"
+        : sensorAgeMinutes <= 90
+            ? "active"
+            : sensorAgeMinutes <= 240
+                ? "warning"
+                : "danger"
+    const sensorBadge = sensorAgeMinutes === null
+        ? "No Data"
+        : sensorAgeMinutes <= 90
+            ? "Fresh"
+            : sensorAgeMinutes <= 240
+                ? "Aging"
+                : "Stale"
+    const automationRules = enabledLightRules + enabledWaterRules
+    const automationTone = automationRules > 0 ? "active" : "warning"
+    const automationBadge = automationRules > 0 ? "Armed" : "Manual"
+    const predictionDays = predictionPreview?.prediction?.days_to_harvest
+    const predictionTone = !cycleProgress
+        ? "warning"
+        : predictionPreview?.readiness?.ready
+            ? "active"
+            : state.model_data?.harvest_model_enabled
+                ? "default"
+                : "danger"
+    const predictionBadge = !cycleProgress
+        ? "Need Cycle"
+        : predictionPreview?.readiness?.ready
+            ? "Predicted"
+            : state.model_data?.harvest_model_enabled
+                ? "Ready"
+                : "Model Off"
+    const predictionValue = predictionDays != null
+        ? `${formatNumber(predictionDays, 1)} days left`
+        : !cycleProgress
+            ? "รอ active cycle"
+            : state.model_data?.harvest_model_enabled
+                ? "พร้อม preview"
+                : "prediction disabled"
+    const predictionCopy = predictionDays != null
+        ? `คาดว่าจะเก็บเกี่ยวได้ประมาณ ${formatTimestamp(predictionPreview?.prediction?.predicted_harvest_at)}`
+        : !cycleProgress
+            ? "เริ่ม grow cycle ก่อน เพื่อให้ระบบผูกข้อมูลปัจจุบันเข้ากับรอบปลูก"
+            : state.model_data?.harvest_model_enabled
+                ? "backend พร้อมให้กด preview ความพร้อมและ baseline prediction"
+                : "backend ยังไม่ได้เปิด harvest model ใน config"
+    const recommendedAction = buildRecommendedAction(state, cycleProgress)
+    const cameraTone = !state.camera.status.is_open
+        ? "danger"
+        : cameraWanted
+            ? "active"
+            : "warning"
+    const cameraBadge = !state.camera.status.is_open
+        ? "Camera Error"
+        : cameraWanted
+            ? "Live View"
+            : "Paused"
+    const cameraValue = !state.camera.status.is_open
+        ? "ตรวจกล้อง"
+        : cameraWanted
+            ? "preview running"
+            : "preview paused"
+    const cameraCopy = state.camera.status.last_error
+        ? state.camera.status.last_error
+        : liveCameraAnalysis?.captured_at
+            ? `Live OpenCV ล่าสุด ${formatRelativeAge(liveCameraAnalysis.captured_at)} • ${formatNumber(liveCameraAnalysis.green_coverage_percent, 2)}% coverage`
+            : "ใช้ panel ด้านล่างเพื่อตรวจ raw, mask และ overlay จากเฟรมปัจจุบัน"
+
+    const cards = [
+        {
+            icon: "calendar.svg",
+            label: "Cycle Status",
+            badge: cycleProgress ? "Active" : "Idle",
+            tone: cycleProgress ? "active" : "warning",
+            value: cycleProgress
+                ? `DAY ${cycleProgress.dayIndex} / ${cycle?.target_harvest_days ?? "-"}`
+                : "ยังไม่มี active cycle",
+            copy: cycleProgress
+                ? `${cycle?.name || cycle?.cycle_id || "current cycle"} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
+                : "เริ่มปลูกก่อน เพื่อให้ระบบผูก sensor history, daily summary และ prediction เข้ากับรอบนี้",
+            href: "#status-section",
+        },
+        {
+            icon: "db.svg",
+            label: "Sensor Freshness",
+            badge: sensorBadge,
+            tone: sensorTone,
+            value: formatRelativeAge(state.sensor?.timestamp),
+            copy: state.sensor
+                ? `Temp ${formatNumber(state.sensor.temp, 1)} °C • pH ${formatNumber(state.sensor.ph, 2)} • Coverage ${formatNumber(state.sensor.green_coverage_percent, 2)}%`
+                : "ยังไม่มี sensor row ล่าสุดจาก backend",
+            href: "#status-section",
+        },
+        {
+            icon: "LightRelay.svg",
+            label: "Automation",
+            badge: automationBadge,
+            tone: automationTone,
+            value: `${enabledLightRules} light • ${enabledWaterRules} water`,
+            copy: `Light ${state.actuators.light.is_on ? "ON" : "OFF"} • Water ${state.actuators.pump_water.is_running ? "RUNNING" : "READY"} • Fertilizer ${state.actuators.pump_fertilizer.running_count}/${state.actuators.pump_fertilizer.pump_count} running`,
+            href: "#light-section",
+        },
+        {
+            icon: "LiveCV.svg",
+            label: "Camera + Vision",
+            badge: cameraBadge,
+            tone: cameraTone,
+            value: cameraValue,
+            copy: cameraCopy,
+            href: "#camera-section",
+        },
+        {
+            icon: "HarvestPredict.svg",
+            label: "Prediction",
+            badge: predictionBadge,
+            tone: predictionTone,
+            value: predictionValue,
+            copy: predictionCopy,
+            href: "#prediction-section",
+        },
+        {
+            icon: recommendedAction.icon,
+            label: "Suggested Next Step",
+            badge: "Action",
+            tone: "default",
+            value: recommendedAction.label,
+            copy: recommendedAction.copy,
+            href: recommendedAction.href,
+        },
+    ] as const
+
+    container.innerHTML = cards.map((card) => `
+        <article class="focus-card">
+            <div class="focus-card-top">
+                <span class="focus-card-label">
+                    ${renderIcon(card.icon, card.label, "focus-card-icon")}
+                    <span>${escapeHtml(card.label)}</span>
+                </span>
+                <span class="mini-chip ${card.tone === "default" ? "" : card.tone}">
+                    ${escapeHtml(card.badge)}
+                </span>
+            </div>
+            <strong>${escapeHtml(card.value)}</strong>
+            <span class="helper-text">${escapeHtml(card.copy)}</span>
+            <a class="focus-link" href="${card.href}">Open section</a>
+        </article>
+    `).join("")
 }
 
 function renderDayOptions(containerId: string, inputName: string): void {
@@ -1112,9 +1388,8 @@ function renderDailySummarySection(
         </article>
     `
     footerNote.innerHTML = `
-        ใช้การ์ดนี้ดูเฉพาะข้อมูลที่ส่งต่อไปทำ dataset และโมเดล
-        ส่วนภาพ raw, binary mask และ overlay ให้ดูจาก Live OpenCV Preview ด้านบน
-        Template ใช้กรอก temp/pH ย้อนหลัง แล้วค่อย import กลับเข้า Mongo ก่อน export dataset รอบถัดไป
+        ส่วนนี้เป็นเครื่องมือสำหรับ dataset และโมเดล
+        ถ้าต้องการดูบ่อและควบคุมอุปกรณ์เป็นหลัก ใช้ Camera, Live Snapshot และ Control cards ด้านบนได้เลย
     `
 }
 
@@ -1257,7 +1532,7 @@ function renderFertilizerPumps(pumps: FertilizerPumpStatus[]): void {
                 <div class="rule-title">
                     <div>
                         <strong>Pump ${pump.id}</strong>
-                        <div class="rule-meta">GPIO ${pump.pin}</div>
+                        <div class="rule-meta">ควบคุมแยกอิสระ</div>
                     </div>
                     <span class="mini-chip ${pump.is_running ? "active" : ""}">
                         ${statusText}
@@ -1809,16 +2084,16 @@ function renderDashboard(state: DashboardState): void {
     $("sensor-timestamp").textContent = formatTimestamp(sensor?.timestamp)
 
     $("light-status-chip").textContent = light.is_on ? "ON" : "OFF"
-    $("light-mode-copy").textContent = light.active_low
-        ? `GPIO ${light.pin} • relay is active-low`
-        : `GPIO ${light.pin} • relay is active-high`
+    $("light-mode-copy").textContent = light.is_on
+        ? "ไฟกำลังทำงานอยู่"
+        : "พร้อมสั่งงานแบบ manual หรือ schedule"
 
     $("pump-water-status-chip").textContent = waterPump.is_running
         ? "RUNNING"
         : "READY"
     $("pump-water-copy").textContent = waterPump.is_running
-        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • ${waterPump.remaining_seconds}s on GPIO ${waterPump.pin}`
-        : `GPIO ${waterPump.pin} • waiting for manual or scheduled run`
+        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • เหลือ ${waterPump.remaining_seconds}s`
+        : "พร้อมสำหรับ manual หรือ schedule"
 
     $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
     $("grow-cycle-status-chip").textContent = cycleProgress

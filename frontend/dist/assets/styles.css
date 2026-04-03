@@ -220,6 +220,10 @@ label {
     margin-top: 0.7rem;
 }
 
+.workflow-panel {
+    grid-column: 1 / -1;
+}
+
 .panel {
     background: var(--surface);
     backdrop-filter: blur(14px);
@@ -268,10 +272,46 @@ label {
     font-size: 1.2rem;
 }
 
+.section-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.section-heading span {
+    min-width: 0;
+}
+
+.section-icon,
+.quick-link-icon,
+.focus-card-icon {
+    display: block;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.section-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
+.quick-link-icon,
+.focus-card-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
 .panel-title p {
     color: var(--muted);
     font-size: 0.95rem;
     overflow-wrap: anywhere;
+}
+
+.panel-badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
 }
 
 .camera-shell {
@@ -339,9 +379,14 @@ label {
 .summary-grid,
 .daily-highlight-grid,
 .history-list,
-.image-strip {
+.image-strip,
+.ops-focus-grid {
     display: grid;
     gap: 0.85rem;
+}
+
+.ops-focus-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .metric-grid {
@@ -409,6 +454,82 @@ label {
     border: 1px solid rgba(18, 128, 106, 0.12);
 }
 
+.focus-card {
+    display: grid;
+    gap: 0.8rem;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 246, 0.92));
+    border: 1px solid rgba(18, 128, 106, 0.12);
+    min-width: 0;
+}
+
+.focus-card-top {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.focus-card-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.focus-card strong {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.focus-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 2.4rem;
+    padding: 0.65rem 0.95rem;
+    border-radius: 999px;
+    background: rgba(18, 128, 106, 0.08);
+    border: 1px solid rgba(18, 128, 106, 0.1);
+    color: var(--accent-deep);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.quick-link-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+}
+
+.quick-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex: 1 1 170px;
+    min-height: 2.6rem;
+    padding: 0.7rem 0.95rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(18, 128, 106, 0.12);
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 700;
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.quick-link:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(23, 51, 47, 0.08);
+    border-color: rgba(18, 128, 106, 0.22);
+}
+
 .analysis-stage-head {
     display: flex;
     flex-wrap: wrap;
@@ -452,6 +573,38 @@ label {
     border: 1px dashed rgba(18, 128, 106, 0.16);
     color: var(--muted);
     line-height: 1.55;
+}
+
+.advanced-tools {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.advanced-tools summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(18, 128, 106, 0.12);
+    font-weight: 700;
+    color: var(--text);
+}
+
+.advanced-tools summary::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-tools summary::after {
+    content: "Show";
+    float: right;
+    color: var(--muted);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.advanced-tools[open] summary::after {
+    content: "Hide";
 }
 
 .model-data-tools {
@@ -653,6 +806,11 @@ label {
 
 .mini-chip.active {
     background: rgba(18, 128, 106, 0.14);
+}
+
+.mini-chip.warning {
+    background: rgba(242, 155, 56, 0.16);
+    color: #834c00;
 }
 
 .mini-chip.danger {
@@ -885,6 +1043,11 @@ label {
         align-items: stretch;
     }
 
+    .panel-badge-row {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
     .model-data-tools {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -912,6 +1075,11 @@ label {
 
     .analysis-detail-row strong {
         text-align: left;
+    }
+
+    .focus-card-top {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .schedule-time-grid {
@@ -988,11 +1156,6 @@ label {
         grid-column: 1 / -1;
     }
 
-    .status-panel .metric-grid,
-    .status-panel .summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .daily-highlight-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -1003,6 +1166,11 @@ label {
 
     .prediction-panel {
         grid-column: 1 / -1;
+    }
+
+    .status-panel .metric-grid,
+    .status-panel .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .fertilizer-grid {
