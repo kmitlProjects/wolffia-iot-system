@@ -6,6 +6,14 @@ export interface SensorReading {
     coverage_method?: string | null
     coverage_version?: string | null
     timestamp?: string | null
+    cycle_id?: string | null
+    cycle_name?: string | null
+    cycle_status?: string | null
+    cycle_planted_at?: string | null
+    cycle_day_index?: number | null
+    target_harvest_days?: number | null
+    expected_harvest_at?: string | null
+    expected_days_to_harvest?: number | null
 }
 
 export interface CameraStatus {

@@ -196,12 +196,16 @@ function createLayout(): string {
                             <article class="metric-card">
                                 <span class="metric-label">Green Coverage</span>
                                 <strong id="sensor-coverage">-</strong>
-                                <span class="helper-text">เปอร์เซ็นต์พื้นที่สีเขียวจาก OpenCV</span>
+                                <span id="sensor-coverage-copy" class="helper-text">
+                                    เปอร์เซ็นต์พื้นที่สีเขียวล่าสุด
+                                </span>
                             </article>
                             <article class="metric-card">
                                 <span class="metric-label">Sensor Timestamp</span>
                                 <strong id="sensor-timestamp">-</strong>
-                                <span class="helper-text">เวลาที่ข้อมูลล่าสุดถูกบันทึก</span>
+                                <span id="sensor-timestamp-copy" class="helper-text">
+                                    เวลาที่ temp / pH ล่าสุดถูกบันทึก
+                                </span>
                             </article>
                         </div>
                         <div class="summary-grid">
@@ -238,79 +242,6 @@ function createLayout(): string {
                 </section>
 
                 <section class="analytics-grid">
-                    <section id="analysis-section" class="panel analysis-hub-panel">
-                        <div class="panel-inner">
-                            <div class="panel-header">
-                                <div class="panel-title">
-                                    <h2 class="section-heading">
-                                        ${renderIcon("db.svg", "Model Data (Advanced)", "section-icon")}
-                                        <span>Model Data (Advanced)</span>
-                                    </h2>
-                                    <p>ข้อมูลสำหรับ dataset และ workflow โมเดล ใช้เมื่อจำเป็น</p>
-                                </div>
-                                <div class="panel-actions">
-                                    <button id="analysis-refresh-button" class="button-ghost" type="button">
-                                        ${renderIcon("RefreshHub.svg", "Refresh Hub", "button-icon")}
-                                        Refresh Hub
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="analysis-preview-meta" class="history-metrics"></div>
-                            <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
-                            <div id="analysis-process-grid" class="analysis-process-grid"></div>
-                            <div id="analysis-footer-note" class="analysis-note"></div>
-                            <details class="advanced-tools">
-                                <summary>Advanced import / export tools</summary>
-                                <section class="schedule-builder">
-                                    <div class="schedule-builder-head">
-                                        <div>
-                                            <span class="card-label">Model Data / Advanced</span>
-                                            <strong>Import Historical temp/pH</strong>
-                                        </div>
-                                        <span class="helper-text">
-                                            ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังหรือ export dataset ไป train model
-                                        </span>
-                                    </div>
-                                    <div class="panel-actions">
-                                        <button id="export-dataset-button" class="button-primary" type="button">
-                                            ${renderIcon("Export.svg", "Export Dataset", "button-icon")}
-                                            Export Dataset
-                                        </button>
-                                        <button id="download-template-button" class="button-secondary" type="button">
-                                            ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
-                                            Download CSV Template
-                                        </button>
-                                    </div>
-                                    <div class="model-data-tools">
-                                        <label for="seed-cycle-id-input">
-                                            Seed Cycle ID
-                                            <input
-                                                id="seed-cycle-id-input"
-                                                type="text"
-                                                placeholder="seed_cycle_..."
-                                            >
-                                        </label>
-                                        <label for="seed-readings-file-input">
-                                            Import Historical temp/pH CSV
-                                            <input
-                                                id="seed-readings-file-input"
-                                                type="file"
-                                                accept=".csv,text/csv"
-                                            >
-                                        </label>
-                                        <button id="upload-template-button" class="button-secondary" type="button">
-                                            ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
-                                            Import CSV
-                                        </button>
-                                    </div>
-                                    <div id="model-data-upload-copy" class="helper-text">
-                                        ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
-                                    </div>
-                                </section>
-                            </details>
-                        </div>
-                    </section>
-
                     <section id="timeseries-section" class="panel timeseries-panel">
                         <div class="panel-inner">
                             <div class="panel-title">
@@ -483,7 +414,7 @@ function createLayout(): string {
                     </section>
                 </section>
 
-                <section id="fertilizer-section" class="panel">
+                <section id="fertilizer-section" class="panel fertilizer-section-panel">
                     <div class="panel-inner">
                         <div class="panel-title">
                             <h2 class="section-heading">
@@ -493,6 +424,79 @@ function createLayout(): string {
                             <p>กรอกปริมาณน้ำต่อหัวปั๊ม แล้วระบบจะคำนวณเวลาเปิดปั๊มให้อัตโนมัติ</p>
                         </div>
                         <div id="pump-fertilizer-list" class="fertilizer-grid"></div>
+                    </div>
+                </section>
+
+                <section id="analysis-section" class="panel analysis-hub-panel">
+                    <div class="panel-inner">
+                        <div class="panel-header">
+                            <div class="panel-title">
+                                <h2 class="section-heading">
+                                    ${renderIcon("db.svg", "Model Data (Advanced)", "section-icon")}
+                                    <span>Model Data (Advanced)</span>
+                                </h2>
+                                <p>ข้อมูลสำหรับ dataset และ workflow โมเดล ใช้เมื่อจำเป็น</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="analysis-refresh-button" class="button-ghost" type="button">
+                                    ${renderIcon("RefreshHub.svg", "Refresh Hub", "button-icon")}
+                                    Refresh Hub
+                                </button>
+                            </div>
+                        </div>
+                        <div id="analysis-preview-meta" class="history-metrics"></div>
+                        <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
+                        <div id="analysis-process-grid" class="analysis-process-grid"></div>
+                        <div id="analysis-footer-note" class="analysis-note"></div>
+                        <details class="advanced-tools">
+                            <summary>Advanced import / export tools</summary>
+                            <section class="schedule-builder">
+                                <div class="schedule-builder-head">
+                                    <div>
+                                        <span class="card-label">Model Data / Advanced</span>
+                                        <strong>Import Historical temp/pH</strong>
+                                    </div>
+                                    <span class="helper-text">
+                                        ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังหรือ export dataset ไป train model
+                                    </span>
+                                </div>
+                                <div class="panel-actions">
+                                    <button id="export-dataset-button" class="button-primary" type="button">
+                                        ${renderIcon("Export.svg", "Export Dataset", "button-icon")}
+                                        Export Dataset
+                                    </button>
+                                    <button id="download-template-button" class="button-secondary" type="button">
+                                        ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
+                                        Download CSV Template
+                                    </button>
+                                </div>
+                                <div class="model-data-tools">
+                                    <label for="seed-cycle-id-input">
+                                        Seed Cycle ID
+                                        <input
+                                            id="seed-cycle-id-input"
+                                            type="text"
+                                            placeholder="seed_cycle_..."
+                                        >
+                                    </label>
+                                    <label for="seed-readings-file-input">
+                                        Import Historical temp/pH CSV
+                                        <input
+                                            id="seed-readings-file-input"
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                        >
+                                    </label>
+                                    <button id="upload-template-button" class="button-secondary" type="button">
+                                        ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
+                                        Import CSV
+                                    </button>
+                                </div>
+                                <div id="model-data-upload-copy" class="helper-text">
+                                    ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
+                                </div>
+                            </section>
+                        </details>
                     </div>
                 </section>
 
@@ -682,6 +686,56 @@ function getLatestCoverageRecord(items: SensorReading[]): SensorReading | null {
     ) ?? dashboardState?.sensor ?? null
 }
 
+function getTimestampValue(value: string | null | undefined): number {
+    if (!value) {
+        return -1
+    }
+
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? -1 : parsed.getTime()
+}
+
+function getFreshCoverageSnapshot(state: DashboardState): {
+    value: number | null | undefined
+    timestamp: string | null | undefined
+    sourceLabel: string
+} {
+    const candidates = [
+        {
+            value: liveCameraAnalysis?.green_coverage_percent,
+            timestamp: liveCameraAnalysis?.captured_at,
+            sourceLabel: "ภาพวิเคราะห์สด",
+        },
+        {
+            value: state.sensor?.green_coverage_percent,
+            timestamp: state.sensor?.timestamp,
+            sourceLabel: "แถวข้อมูลล่าสุด",
+        },
+        {
+            value: state.image_analysis?.green_coverage_percent,
+            timestamp: state.image_analysis?.timestamp,
+            sourceLabel: "ภาพวิเคราะห์ล่าสุด",
+        },
+    ].filter(
+        (candidate) =>
+            candidate.value !== null && candidate.value !== undefined,
+    )
+
+    if (candidates.length === 0) {
+        return {
+            value: null,
+            timestamp: null,
+            sourceLabel: "ยังไม่มีข้อมูล coverage",
+        }
+    }
+
+    candidates.sort(
+        (left, right) =>
+            getTimestampValue(right.timestamp) - getTimestampValue(left.timestamp),
+    )
+    return candidates[0]
+}
+
 function getCycleProgress(cycle: DashboardState["grow_cycle"], referenceAt: string): {
     dayIndex: number
     remainingDays: number
@@ -709,9 +763,55 @@ function getCycleProgress(cycle: DashboardState["grow_cycle"], referenceAt: stri
     return { dayIndex, remainingDays }
 }
 
+function getResolvedCycleProgress(state: DashboardState | null): {
+    dayIndex: number
+    remainingDays: number
+    targetDays: number | null
+} | null {
+    const cycle = state?.grow_cycle ?? null
+    if (!cycle?.planted_at) {
+        return null
+    }
+
+    const derivedProgress = getCycleProgress(
+        cycle,
+        state?.meta.generated_at ?? new Date().toISOString(),
+    )
+    const explicitDayIndex =
+        state?.sensor?.cycle_day_index ??
+        state?.daily_summary?.cycle_day_index ??
+        derivedProgress?.dayIndex ??
+        null
+    const targetDays =
+        cycle.target_harvest_days ??
+        state?.sensor?.target_harvest_days ??
+        state?.daily_summary?.target_harvest_days ??
+        null
+    const explicitRemainingDays =
+        state?.sensor?.expected_days_to_harvest ??
+        state?.daily_summary?.expected_days_to_harvest ??
+        null
+    const remainingDays = explicitRemainingDays ??
+        (
+            targetDays !== null && explicitDayIndex !== null
+                ? Math.max(targetDays - explicitDayIndex, 0)
+                : derivedProgress?.remainingDays ?? 0
+        )
+
+    if (explicitDayIndex === null) {
+        return null
+    }
+
+    return {
+        dayIndex: explicitDayIndex,
+        remainingDays,
+        targetDays,
+    }
+}
+
 function getActiveCycleProgress(): {
     cycle: DashboardState["grow_cycle"]
-    progress: ReturnType<typeof getCycleProgress>
+    progress: ReturnType<typeof getResolvedCycleProgress>
 } {
     const cycle = dashboardState?.grow_cycle ?? null
     if (!cycle || cycle.status !== "active") {
@@ -723,13 +823,13 @@ function getActiveCycleProgress(): {
 
     return {
         cycle,
-        progress: getCycleProgress(cycle, dashboardState?.meta.generated_at ?? new Date().toISOString()),
+        progress: getResolvedCycleProgress(dashboardState),
     }
 }
 
 function setCycleActionState(
     cycle: DashboardState["grow_cycle"],
-    cycleProgress: ReturnType<typeof getCycleProgress>,
+    cycleProgress: ReturnType<typeof getResolvedCycleProgress>,
 ): void {
     const startButton = $("cycle-start-button") as HTMLButtonElement
     const harvestButton = $("cycle-harvest-button") as HTMLButtonElement
@@ -930,7 +1030,7 @@ function buildRecommendedAction(
 function renderOperatorFocus(state: DashboardState): void {
     const container = $("ops-focus-grid")
     const cycle = state.grow_cycle
-    const cycleProgress = getCycleProgress(cycle, state.meta.generated_at)
+    const cycleProgress = getResolvedCycleProgress(state)
     const enabledLightRules = state.automation.light.filter((rule) => rule.enabled).length
     const enabledWaterRules = state.automation.pump_water.filter((rule) => rule.enabled).length
     const sensorAgeMinutes = getMinutesSince(state.sensor?.timestamp)
@@ -1246,10 +1346,7 @@ function renderDailySummarySection(
     const processGrid = $("analysis-process-grid")
     const footerNote = $("analysis-footer-note")
     const cycle = dashboardState?.grow_cycle ?? null
-    const cycleProgress = getCycleProgress(
-        cycle,
-        dashboardState?.meta.generated_at ?? new Date().toISOString(),
-    )
+    const cycleProgress = getResolvedCycleProgress(dashboardState)
     const latestCoverageRecord = getLatestCoverageRecord(sensorHistory)
     const coveragePoints = countCoveragePoints(sensorHistory)
     const taggedCoveragePoints = countTaggedCoveragePoints(sensorHistory)
@@ -1273,7 +1370,7 @@ function renderDailySummarySection(
     )
     const sourceLabel = latestImage?.analysis_source_label ?? latestDebug?.source_label ?? "-"
     const cycleDayLabel = cycleProgress
-        ? `${cycleProgress.dayIndex}/${cycle?.target_harvest_days ?? "-"}`
+        ? `${cycleProgress.dayIndex}/${cycleProgress.targetDays ?? cycle?.target_harvest_days ?? "-"}`
         : String(latestSummary?.cycle_day_index ?? latestDebug?.cycle_day_index ?? "-")
     const summaryCount = summaries.length
 
@@ -2012,6 +2109,7 @@ async function refreshLiveCameraAnalysis(force = false): Promise<void> {
         liveCameraAnalysis = response.analysis
         renderLiveCameraAnalysis()
         if (dashboardState) {
+            renderLiveSnapshot(dashboardState)
             renderDailySummarySection(
                 dashboardState.daily_summary,
                 dashboardState.image_analysis,
@@ -2086,13 +2184,56 @@ function syncCamera(): void {
     button.textContent = "Resume Camera"
 }
 
-function renderDashboard(state: DashboardState): void {
+function renderLiveSnapshot(state: DashboardState): void {
     const sensor = state.sensor
     const light = state.actuators.light
     const waterPump = state.actuators.pump_water
     const fertilizer = state.actuators.pump_fertilizer
     const cycle = state.grow_cycle
-    const cycleProgress = getCycleProgress(cycle, state.meta.generated_at)
+    const cycleProgress = getResolvedCycleProgress(state)
+    const coverageSnapshot = getFreshCoverageSnapshot(state)
+    const cycleName = cycle?.name?.trim() || state.sensor?.cycle_name?.trim() || "รอบปลูกปัจจุบัน"
+    const targetDays =
+        cycleProgress?.targetDays ??
+        cycle?.target_harvest_days ??
+        state.sensor?.target_harvest_days ??
+        null
+
+    $("sensor-temp").textContent = `${formatNumber(sensor?.temp)} °C`
+    $("sensor-ph").textContent = formatNumber(sensor?.ph, 2)
+    $("sensor-coverage").textContent = `${formatNumber(coverageSnapshot.value, 2)} %`
+    $("sensor-coverage-copy").textContent = coverageSnapshot.timestamp
+        ? `${coverageSnapshot.sourceLabel} • ${formatTimeOnly(coverageSnapshot.timestamp)}`
+        : coverageSnapshot.sourceLabel
+    $("sensor-timestamp").textContent = formatTimestamp(sensor?.timestamp)
+    $("sensor-timestamp-copy").textContent = sensor?.timestamp
+        ? "อ้างอิงค่า temp / pH ล่าสุดในระบบ"
+        : "ยังไม่มีข้อมูล temp / pH ล่าสุด"
+
+    $("light-status-chip").textContent = light.is_on ? "ON" : "OFF"
+    $("light-mode-copy").textContent = light.is_on
+        ? "ไฟกำลังทำงานอยู่"
+        : "พร้อมสั่งงานแบบ manual หรือ schedule"
+
+    $("pump-water-status-chip").textContent = waterPump.is_running
+        ? "RUNNING"
+        : "READY"
+    $("pump-water-copy").textContent = waterPump.is_running
+        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • เหลือ ${waterPump.remaining_seconds}s`
+        : "พร้อมสำหรับ manual หรือ schedule"
+
+    $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
+    $("grow-cycle-status-chip").textContent = cycleProgress
+        ? `DAY ${cycleProgress.dayIndex}/${targetDays ?? "-"}`
+        : "IDLE"
+    $("grow-cycle-copy").textContent = cycleProgress
+        ? `${cycleName} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
+        : "ยังไม่มีรอบปลูก active อยู่"
+    setCycleActionState(cycle, cycleProgress)
+}
+
+function renderDashboard(state: DashboardState): void {
+    const fertilizer = state.actuators.pump_fertilizer
 
     $("timezone-chip").textContent = `TZ: ${state.meta.timezone}`
     $("generated-at").textContent = formatTimestamp(state.meta.generated_at)
@@ -2109,31 +2250,7 @@ function renderDashboard(state: DashboardState): void {
             : "ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle"
     }
 
-    $("sensor-temp").textContent = `${formatNumber(sensor?.temp)} °C`
-    $("sensor-ph").textContent = formatNumber(sensor?.ph, 2)
-    $("sensor-coverage").textContent = `${formatNumber(sensor?.green_coverage_percent, 2)} %`
-    $("sensor-timestamp").textContent = formatTimestamp(sensor?.timestamp)
-
-    $("light-status-chip").textContent = light.is_on ? "ON" : "OFF"
-    $("light-mode-copy").textContent = light.is_on
-        ? "ไฟกำลังทำงานอยู่"
-        : "พร้อมสั่งงานแบบ manual หรือ schedule"
-
-    $("pump-water-status-chip").textContent = waterPump.is_running
-        ? "RUNNING"
-        : "READY"
-    $("pump-water-copy").textContent = waterPump.is_running
-        ? `${formatNumber(waterPump.remaining_liters, 2)}L left • เหลือ ${waterPump.remaining_seconds}s`
-        : "พร้อมสำหรับ manual หรือ schedule"
-
-    $("fertilizer-summary").textContent = `${fertilizer.running_count}/${fertilizer.pump_count} running`
-    $("grow-cycle-status-chip").textContent = cycleProgress
-        ? `DAY ${cycleProgress.dayIndex}/${cycle?.target_harvest_days ?? "-"}`
-        : "IDLE"
-    $("grow-cycle-copy").textContent = cycleProgress
-        ? `${cycle?.name || cycle?.cycle_id || "active cycle"} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
-        : "ยังไม่มีรอบปลูก active อยู่"
-    setCycleActionState(cycle, cycleProgress)
+    renderLiveSnapshot(state)
 
     renderLightRules(state.automation.light)
     renderPumpWaterRules(state.automation.pump_water)
@@ -2457,7 +2574,7 @@ function bindEvents(): void {
         }
 
         cycleActionPending = true
-        setCycleActionState(activeCycle ?? null, getCycleProgress(activeCycle ?? null, dashboardState?.meta.generated_at ?? new Date().toISOString()))
+        setCycleActionState(activeCycle ?? null, getResolvedCycleProgress(dashboardState))
         try {
             await runAction("เริ่มรอบปลูกแล้ว", async () => {
                 await startGrowCycle()
