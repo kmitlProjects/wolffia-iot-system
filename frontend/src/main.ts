@@ -71,6 +71,7 @@ let predictionPreviewPending = false
 let predictionPreview: HarvestPredictionPreviewResponse | null = null
 let liveCameraAnalysisPending = false
 let liveCameraAnalysis: LiveCameraAnalysis | null = null
+let analysisAdvancedOpen = false
 
 function $(id: string): HTMLElement {
     const element = document.getElementById(id)
@@ -484,12 +485,25 @@ function createLayout(): string {
                                 </button>
                             </div>
                         </div>
-                        <div id="analysis-preview-meta" class="history-metrics"></div>
                         <div id="daily-summary-highlights" class="daily-highlight-grid"></div>
-                        <div id="analysis-process-grid" class="analysis-process-grid"></div>
-                        <div id="analysis-footer-note" class="analysis-note"></div>
-                        <details class="advanced-tools">
-                            <summary>Advanced import / export tools</summary>
+                        <button
+                            id="analysis-advanced-toggle"
+                            class="button-ghost analysis-advanced-toggle"
+                            type="button"
+                            aria-expanded="false"
+                            aria-controls="analysis-advanced-content"
+                        >
+                            แสดงรายละเอียดโมเดลและเครื่องมือขั้นสูง
+                        </button>
+                        <div
+                            id="analysis-advanced-content"
+                            class="analysis-advanced-content"
+                            hidden
+                            style="display: none;"
+                        >
+                            <div id="analysis-preview-meta" class="history-metrics"></div>
+                            <div id="analysis-process-grid" class="analysis-process-grid"></div>
+                            <div id="analysis-footer-note" class="analysis-note"></div>
                             <section class="schedule-builder">
                                 <div class="schedule-builder-head">
                                     <div>
@@ -536,7 +550,7 @@ function createLayout(): string {
                                     ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
                                 </div>
                             </section>
-                        </details>
+                        </div>
                     </div>
                 </section>
 
@@ -1561,16 +1575,16 @@ function renderDailySummarySection(
             <span class="helper-text">${escapeHtml(formatTimestamp(latestCoverageRecord?.timestamp))}</span>
         </article>
         <article class="summary-card">
-            <span class="card-label">Coverage Pipeline</span>
-            <strong class="summary-compact-text">${escapeHtml(liveMethod)}</strong>
-            <span class="helper-text">version ${escapeHtml(String(liveVersion))}</span>
-            <span class="helper-text wrap-anywhere">${escapeHtml(pipelineCopy)}</span>
-        </article>
-        <article class="summary-card">
             <span class="card-label">Daily Rollup</span>
             <strong>${formatNumber(latestSummary?.green_coverage_avg, 2)} %</strong>
             <span class="helper-text">max ${formatNumber(latestSummary?.green_coverage_max, 2)}%</span>
             <span class="helper-text">${escapeHtml(latestSummary?.date ?? "-")}</span>
+        </article>
+        <article class="summary-card">
+            <span class="card-label">Coverage Pipeline</span>
+            <strong class="summary-compact-text">${escapeHtml(liveMethod)}</strong>
+            <span class="helper-text">version ${escapeHtml(String(liveVersion))}</span>
+            <span class="helper-text wrap-anywhere">${escapeHtml(pipelineCopy)}</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Model Feed</span>
@@ -2062,6 +2076,24 @@ function setAnalysisRefreshState(pending: boolean): void {
         ? "Refreshing..."
         : "Refresh Hub"
     button.title = "รีเฟรชภาพสด, ข้อมูลรายชั่วโมง และ daily summary ล่าสุด"
+}
+
+function setAnalysisAdvancedOpenState(open: boolean): void {
+    analysisAdvancedOpen = open
+    const button = document.getElementById("analysis-advanced-toggle") as HTMLButtonElement | null
+    const content = document.getElementById("analysis-advanced-content") as HTMLDivElement | null
+    if (!button || !content) {
+        return
+    }
+
+    button.textContent = open
+        ? "ซ่อนรายละเอียดโมเดลและเครื่องมือขั้นสูง"
+        : "แสดงรายละเอียดโมเดลและเครื่องมือขั้นสูง"
+    button.setAttribute("aria-expanded", open ? "true" : "false")
+    button.classList.toggle("open", open)
+    content.hidden = !open
+    content.style.display = open ? "grid" : "none"
+    content.setAttribute("aria-hidden", open ? "false" : "true")
 }
 
 function setPredictionPreviewState(pending: boolean): void {
@@ -2588,6 +2620,7 @@ function bindRuleContainer(containerId: string): void {
 
 function bindEvents(): void {
     setAnalysisRefreshState(false)
+    setAnalysisAdvancedOpenState(false)
     setDatasetExportState(false)
     setDatasetImportState(false)
     setTemplateDownloadState(false)
@@ -2624,6 +2657,14 @@ function bindEvents(): void {
     $("camera-toggle").addEventListener("click", () => {
         cameraWanted = !cameraWanted
         syncCamera()
+    })
+
+    $("analysis-advanced-toggle").addEventListener("click", () => {
+        setAnalysisAdvancedOpenState(!analysisAdvancedOpen)
+    })
+
+    window.addEventListener("pageshow", () => {
+        setAnalysisAdvancedOpenState(false)
     })
 
     $("analysis-refresh-button").addEventListener("click", async () => {
@@ -2929,6 +2970,7 @@ async function bootstrap(): Promise<void> {
     syncCamera()
     void refreshLiveCameraAnalysis(true)
     await refreshDashboard()
+    setAnalysisAdvancedOpenState(false)
     queueRefresh()
 }
 
