@@ -321,6 +321,7 @@ function createLayout(): string {
                                 </button>
                             </div>
                             <span id="timeseries-capture-copy" class="helper-text">-</span>
+                            <span id="timeseries-capture-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
                         </article>
                     </div>
                 </aside>
@@ -3263,21 +3264,45 @@ function renderLiveSnapshot(state: DashboardState): void {
 function renderTimeseriesCapturePolicy(state: DashboardState): void {
     const chip = document.getElementById("timeseries-capture-mode-chip")
     const copy = document.getElementById("timeseries-capture-copy")
+    const lastCopy = document.getElementById("timeseries-capture-last-copy")
     const keepButton = document.getElementById("timeseries-capture-keep-light-button") as HTMLButtonElement | null
     const forceOffButton = document.getElementById("timeseries-capture-force-off-button") as HTMLButtonElement | null
-    if (!(chip instanceof HTMLElement) || !(copy instanceof HTMLElement) || !keepButton || !forceOffButton) {
+    if (
+        !(chip instanceof HTMLElement)
+        || !(copy instanceof HTMLElement)
+        || !(lastCopy instanceof HTMLElement)
+        || !keepButton
+        || !forceOffButton
+    ) {
         return
     }
 
     const policy = state.model_data?.timeseries_capture ?? null
     const mode = policy?.mode === "keep_light_state" ? "keep_light_state" : "force_light_off"
     const settleSeconds = Math.max(Number(policy?.light_settle_seconds ?? 0), 0)
+    const latestSaved = state.image_analysis
 
     chip.textContent = mode === "force_light_off" ? "ปิดไฟชั่วคราว" : "เปิดไฟตามเดิม"
     chip.className = `mini-chip ${mode === "force_light_off" ? "warning" : "active"}`
     copy.textContent = mode === "force_light_off"
         ? `รอบบันทึก timeseries ถัดไปจะปิดไฟชั่วคราว${settleSeconds > 0 ? ` รอ ${formatNumber(settleSeconds, 0)} วินาที` : ""} แล้วค่อยเปิดกลับหลังถ่าย`
         : "รอบบันทึก timeseries ถัดไปจะใช้สภาพไฟปัจจุบันแล้วบันทึกทันที"
+
+    if (latestSaved?.timestamp) {
+        const latestCoverage = latestSaved.green_coverage_percent
+        const latestAction = latestSaved.light_forced_off_for_capture
+            ? `วิเคราะห์ล่าสุด ${formatTimestamp(latestSaved.timestamp)} • ปิดไฟก่อนถ่าย${latestSaved.light_restored_after_capture ? " และเปิดไฟกลับแล้ว" : ""}`
+            : `วิเคราะห์ล่าสุด ${formatTimestamp(latestSaved.timestamp)} • ใช้สภาพไฟเดิม`
+        const latestSensorSave = state.sensor?.timestamp
+            ? `DB sensor ล่าสุด ${formatTimestamp(state.sensor.timestamp)}`
+            : "ยังไม่มีข้อมูล sensor ที่บันทึกล่าสุด"
+        const latestCoverageCopy = latestCoverage === null || latestCoverage === undefined
+            ? latestAction
+            : `${latestAction} • coverage ${formatNumber(latestCoverage, 2)}%`
+        lastCopy.textContent = `${latestCoverageCopy} • ${latestSensorSave}`
+    } else {
+        lastCopy.textContent = "ยังไม่มีข้อมูลบันทึกล่าสุดให้ตรวจสอบ"
+    }
 
     keepButton.classList.toggle("is-selected", mode === "keep_light_state")
     forceOffButton.classList.toggle("is-selected", mode === "force_light_off")

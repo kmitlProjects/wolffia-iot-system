@@ -187,6 +187,7 @@ class AutomationScheduler:
         thread.join(timeout=self.poll_seconds + 1)
 
     def get_rules(self):
+        self._cleanup_finished_rules(datetime.now(self.timezone))
         documents = list(
             self.collection.find().sort(
                 [("device", 1), ("created_at", 1), ("_id", 1)]
@@ -316,6 +317,8 @@ class AutomationScheduler:
         today_key = now.strftime("%Y-%m-%d")
         weekday = WEEKDAY_ORDER[now.weekday()]
 
+        self._cleanup_finished_rules(now)
+
         rules = list(self.collection.find({"enabled": True}))
         for rule in rules:
             start_date = rule.get("start_date")
@@ -383,3 +386,47 @@ class AutomationScheduler:
                 }
             },
         )
+
+    def _cleanup_finished_rules(self, now: datetime):
+        today_key = now.strftime("%Y-%m-%d")
+        expired_ids = []
+
+        for rule in self.collection.find({"end_date": {"$ne": None}}):
+            end_date = rule.get("end_date")
+            if not end_date:
+                continue
+
+            if today_key > end_date:
+                expired_ids.append(rule["_id"])
+                continue
+
+            if end_date != today_key:
+                continue
+
+            if self._is_rule_finished_for_end_date(rule, today_key):
+                expired_ids.append(rule["_id"])
+
+        if not expired_ids:
+            return
+
+        result = self.collection.delete_many({"_id": {"$in": expired_ids}})
+        if result.deleted_count > 0:
+            print(
+                f"[scheduler] ลบ rule ที่หมดอายุแล้ว {result.deleted_count} รายการ "
+                f"สำหรับวันที่ {today_key}"
+            )
+
+    def _is_rule_finished_for_end_date(self, rule, today_key: str):
+        device = rule.get("device")
+        last_triggered = rule.get("last_triggered") or {}
+
+        if device == "light":
+            return (
+                last_triggered.get("on") == today_key
+                and last_triggered.get("off") == today_key
+            )
+
+        if device == "pump_water":
+            return last_triggered.get("start") == today_key
+
+        return False
