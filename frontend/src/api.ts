@@ -167,6 +167,22 @@ export function previewHarvestPrediction(
     })
 }
 
+export function setTimeseriesCapturePolicy(
+    payload: { mode: "keep_light_state" | "force_light_off"; light_settle_seconds?: number },
+): Promise<{
+    capture_policy: {
+        mode?: string | null
+        force_light_off?: boolean | null
+        light_settle_seconds?: number | null
+        restore_light_after_capture?: boolean | null
+    }
+}> {
+    return requestJson("/timeseries/capture-policy", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    })
+}
+
 export function startGrowCycle(): Promise<{ grow_cycle: unknown }> {
     return requestJson("/grow-cycles/start", {
         method: "POST",

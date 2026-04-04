@@ -60,6 +60,42 @@ class DailyImageScheduler:
         self._latest_debug_info = None
         self._latest_debug_assets = {}
 
+    def get_capture_policy(self):
+        with self._lock:
+            return {
+                "mode": (
+                    "force_light_off"
+                    if self.force_light_off
+                    else "keep_light_state"
+                ),
+                "force_light_off": bool(self.force_light_off),
+                "light_settle_seconds": float(self.light_settle_seconds),
+                "restore_light_after_capture": True,
+            }
+
+    def set_capture_policy(
+        self,
+        *,
+        mode: str | None = None,
+        force_light_off: bool | None = None,
+        light_settle_seconds: float | int | None = None,
+    ):
+        with self._lock:
+            if mode is not None:
+                normalized_mode = str(mode).strip().lower()
+                if normalized_mode not in {"keep_light_state", "force_light_off"}:
+                    raise ValueError(
+                        "mode must be keep_light_state or force_light_off"
+                    )
+                self.force_light_off = normalized_mode == "force_light_off"
+            elif force_light_off is not None:
+                self.force_light_off = bool(force_light_off)
+
+            if light_settle_seconds is not None:
+                self.light_settle_seconds = max(float(light_settle_seconds), 0.0)
+
+            return self.get_capture_policy()
+
     def start(self):
         with self._lock:
             if self._thread is not None and self._thread.is_alive():

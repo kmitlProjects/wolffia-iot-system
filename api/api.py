@@ -214,6 +214,11 @@ class HarvestPredictionRequest(BaseModel):
     sensor_limit: int = PREDICTION_SENSOR_LIMIT
 
 
+class TimeseriesCapturePolicyRequest(BaseModel):
+    mode: str
+    light_settle_seconds: float | None = None
+
+
 class ModelDataImportRequest(BaseModel):
     cycle_id: str
     csv_text: str
@@ -588,6 +593,7 @@ def get_dashboard_state():
             "template_download_url": "/model-data/template/download",
             "harvest_model_enabled": HARVEST_MODEL_ENABLED,
             "harvest_model_path": HARVEST_MODEL_PATH,
+            "timeseries_capture": daily_image_scheduler.get_capture_policy(),
             "water_pump_dosing": get_water_pump_dosing_config(),
             "fertilizer_dosing": get_fertilizer_dosing_config(),
         },
@@ -820,6 +826,24 @@ def capture_image_now():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {"image_analysis": serialize_document(document)}
+
+
+@app.get("/timeseries/capture-policy")
+def timeseries_capture_policy():
+    return {"capture_policy": daily_image_scheduler.get_capture_policy()}
+
+
+@app.patch("/timeseries/capture-policy")
+def update_timeseries_capture_policy(payload: TimeseriesCapturePolicyRequest):
+    try:
+        policy = daily_image_scheduler.set_capture_policy(
+            mode=payload.mode,
+            light_settle_seconds=payload.light_settle_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"capture_policy": policy}
 
 
 @app.get("/model-data/template/download")

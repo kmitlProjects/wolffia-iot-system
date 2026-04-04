@@ -81,8 +81,8 @@ label {
 }
 
 .app-shell {
-    width: min(1760px, calc(100vw - 1rem));
-    margin: 0 auto 0 0.5rem;
+    width: min(1760px, calc(100vw - 2rem));
+    margin: 0 auto;
     padding: 1rem 0 2.35rem;
 }
 
@@ -896,6 +896,42 @@ label {
     color: var(--accent-deep);
 }
 
+.timeseries-capture-card {
+    gap: 0.6rem;
+}
+
+.timeseries-capture-panel .panel-inner {
+    gap: 0;
+}
+
+.timeseries-capture-panel .timeseries-capture-card {
+    height: 100%;
+}
+
+.timeseries-capture-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+}
+
+.timeseries-capture-button {
+    min-height: 2.45rem;
+    padding: 0.68rem 0.8rem;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    box-shadow: none;
+}
+
+.timeseries-capture-button.is-selected {
+    background: rgba(18, 128, 106, 0.12);
+    border-color: rgba(18, 128, 106, 0.26);
+    color: var(--accent-deep);
+}
+
+.timeseries-capture-button:disabled {
+    opacity: 0.68;
+}
+
 .timeseries-progress-track {
     position: relative;
     width: 100%;
@@ -1702,7 +1738,7 @@ label {
 @media (min-width: 720px) {
     .app-shell {
         width: min(1760px, calc(100vw - 2rem));
-        margin-left: 1rem;
+        margin-inline: auto;
         padding-top: 1.5rem;
     }
 
@@ -1912,16 +1948,20 @@ label {
         min-height: 2.55rem;
         padding: 0.72rem 1rem;
     }
+
+    .timeseries-capture-panel {
+        grid-column: 1 / -1;
+    }
 }
 
 @media (min-width: 1180px) {
     .app-shell {
         width: min(1860px, calc(100vw - 2rem));
-        margin-left: 1rem;
+        margin-inline: auto;
     }
 
     .dashboard-grid {
-        grid-template-columns: minmax(216px, 232px) minmax(0, 1.62fr) minmax(430px, 1.18fr);
+        grid-template-columns: minmax(216px, 232px) minmax(0, 1.48fr) minmax(430px, 1.08fr) minmax(250px, 0.72fr);
         align-items: start;
         gap: 1rem;
     }
@@ -1983,13 +2023,21 @@ label {
         grid-column: 3;
     }
 
+    .timeseries-capture-panel {
+        grid-column: 4;
+        grid-row: 1 / span 4;
+        align-self: start;
+        position: sticky;
+        top: 1rem;
+    }
+
     .analytics-grid,
     .control-grid,
     .prediction-panel,
     .timeseries-gap-panel,
     .fertilizer-section-panel,
     .analysis-hub-panel {
-        grid-column: 2 / -1;
+        grid-column: 2 / 4;
     }
 
     .camera-shell {

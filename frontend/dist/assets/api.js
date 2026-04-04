@@ -108,6 +108,13 @@ export function previewHarvestPrediction(payload = {}) {
     });
 }
 
+export function setTimeseriesCapturePolicy(payload) {
+    return requestJson("/timeseries/capture-policy", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
 export function startGrowCycle() {
     return requestJson("/grow-cycles/start", {
         method: "POST",

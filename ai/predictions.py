@@ -284,10 +284,10 @@ def build_model_feature_vector(
         coverage_max_series.append(_coerce_float(point.get("green_coverage_max")))
 
     coverage_now = _first_non_none(
+        _coerce_float(model_input.get("latest_green_coverage_percent")),
         _coerce_float(latest_summary.get("daily_image_coverage_percent")),
         _coerce_float(latest_summary.get("green_coverage_avg")),
         _coerce_float(model_input.get("latest_daily_image_coverage_percent")),
-        _coerce_float(model_input.get("latest_green_coverage_percent")),
         _last_non_none(coverage_series),
     )
     coverage_avg = _first_non_none(

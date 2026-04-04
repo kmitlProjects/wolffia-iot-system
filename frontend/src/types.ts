@@ -253,6 +253,12 @@ export interface DashboardState {
         template_download_url?: string | null
         harvest_model_enabled?: boolean
         harvest_model_path?: string | null
+        timeseries_capture?: {
+            mode?: "keep_light_state" | "force_light_off" | string | null
+            force_light_off?: boolean | null
+            light_settle_seconds?: number | null
+            restore_light_after_capture?: boolean | null
+        } | null
         water_pump_dosing?: {
             pump_flow_l_per_min?: number | null
             seconds_per_liter?: number | null

@@ -12,6 +12,7 @@ import {
     importModelDataTemplate,
     importTimeseriesGapCsv,
     previewHarvestPrediction,
+    setTimeseriesCapturePolicy,
     setAutomationRuleEnabled,
     startFertilizerPump,
     startGrowCycle,
@@ -19,7 +20,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260404z";
+} from "./api.js?v=20260404ar";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -60,6 +61,7 @@ let gapImportPending = false;
 let templateDownloadPending = false;
 let predictionPreviewPending = false;
 let predictionPreview = null;
+let timeseriesCapturePolicyPending = false;
 let liveCameraAnalysisPending = false;
 let liveCameraAnalysis = null;
 let analysisAdvancedOpen = false;
@@ -283,6 +285,35 @@ function createLayout() {
                         </div>
                     </div>
                 </section>
+
+                <aside id="timeseries-capture-section" class="panel timeseries-capture-panel">
+                    <div class="panel-inner">
+                        <article class="summary-card timeseries-capture-card">
+                            <div class="summary-card-head">
+                                <span class="card-label">Timeseries Snap</span>
+                                <span id="timeseries-capture-mode-chip" class="mini-chip">-</span>
+                            </div>
+                            <span class="helper-text">เลือกว่าจะใช้สภาพไฟเดิม หรือปิดไฟชั่วคราวก่อนเก็บข้อมูลรอบถัดไป</span>
+                            <div class="timeseries-capture-actions" role="group" aria-label="Timeseries snapshot light mode">
+                                <button
+                                    id="timeseries-capture-keep-light-button"
+                                    class="button-ghost timeseries-capture-button"
+                                    type="button"
+                                >
+                                    เปิดไฟตามเดิม
+                                </button>
+                                <button
+                                    id="timeseries-capture-force-off-button"
+                                    class="button-ghost timeseries-capture-button"
+                                    type="button"
+                                >
+                                    ปิดไฟก่อนถ่าย
+                                </button>
+                            </div>
+                            <span id="timeseries-capture-copy" class="helper-text">-</span>
+                        </article>
+                    </div>
+                </aside>
 
                 <section id="prediction-section" class="panel prediction-panel">
                     <div class="panel-inner">
@@ -1906,7 +1937,16 @@ function renderPredictionPreview(state) {
     const summaryContainer = $("prediction-preview-summary");
     const copyContainer = $("prediction-preview-copy");
     const cycle = state.grow_cycle;
-    const latestImage = state.image_analysis;
+    const cycleItems = getCycleTimeseriesItems(state);
+    const latestTimeseriesRow = getLatestCoverageRecord(cycleItems);
+    const latestCoverageValue = latestTimeseriesRow?.green_coverage_percent ?? state.sensor?.green_coverage_percent;
+    const latestCycleDay = latestTimeseriesRow?.cycle_day_index ?? state.daily_summary?.cycle_day_index ?? null;
+    const latestTimeseriesCopy = latestTimeseriesRow?.timestamp
+        ? formatTimestamp(latestTimeseriesRow.timestamp)
+        : "ยังไม่มี hourly row ในรอบปลูก";
+    const latestTimeseriesMeta = latestTimeseriesRow
+        ? `Temp ${formatNumber(latestTimeseriesRow.temp, 1)} °C • pH ${formatNumber(latestTimeseriesRow.ph, 2)}`
+        : "รอข้อมูล temp / pH / coverage จาก timeseries";
 
     if (!predictionPreview) {
         copyContainer.classList.add("rule-empty");
@@ -1921,13 +1961,13 @@ function renderPredictionPreview(state) {
             </article>
             <article class="summary-card">
                 <span class="card-label">Latest Coverage</span>
-                <strong>${formatNumber(latestImage?.green_coverage_percent, 2)} %</strong>
-                <span class="helper-text">ค่าล่าสุดจาก image analysis</span>
+                <strong>${formatNumber(latestCoverageValue, 2)} %</strong>
+                <span class="helper-text">${escapeHtml(latestTimeseriesCopy)}</span>
             </article>
             <article class="summary-card">
-                <span class="card-label">Latest Source Day</span>
-                <strong>${escapeHtml(String(state.image_analysis_debug?.cycle_day_index ?? state.daily_summary?.cycle_day_index ?? "-"))}</strong>
-                <span class="helper-text">${escapeHtml(state.image_analysis?.analysis_source_label ?? "-")}</span>
+                <span class="card-label">Latest Timeseries Row</span>
+                <strong>${latestCycleDay !== null ? `DAY ${escapeHtml(String(latestCycleDay))}` : "-"}</strong>
+                <span class="helper-text">${escapeHtml(latestTimeseriesMeta)}</span>
             </article>
         `;
         copyContainer.innerHTML = `
@@ -1946,7 +1986,7 @@ function renderPredictionPreview(state) {
     const confidencePercent = prediction.confidence_score != null
         ? Math.round(prediction.confidence_score * 100)
         : null;
-    const coverageValue = modelInput.latest_daily_image_coverage_percent ?? modelInput.latest_green_coverage_percent;
+    const coverageValue = modelInput.latest_green_coverage_percent ?? modelInput.latest_daily_image_coverage_percent;
     const cycleDayLabel = cycleSnapshot.cycle_day_index != null && cycleSnapshot.target_harvest_days != null
         ? `${formatNumber(cycleSnapshot.cycle_day_index, 0)} / ${formatNumber(cycleSnapshot.target_harvest_days, 0)}`
         : "-";
@@ -3108,6 +3148,7 @@ function renderLiveSnapshot(state) {
     $("sensor-timestamp-copy").textContent = sensor?.timestamp
         ? "อ้างอิงค่า temp / pH ล่าสุดในระบบ"
         : "ยังไม่มีข้อมูล temp / pH ล่าสุด";
+    renderTimeseriesCapturePolicy(state);
     renderNextSensorSaveCountdown(state);
     renderTimeseriesProgressSummary(state);
 
@@ -3129,6 +3170,37 @@ function renderLiveSnapshot(state) {
         ? `${cycleName} • เหลือ ${cycleProgress.remainingDays} วันตามแผน`
         : "ยังไม่มีรอบปลูก active อยู่";
     setCycleActionState(cycle, cycleProgress);
+}
+
+function renderTimeseriesCapturePolicy(state) {
+    const chip = document.getElementById("timeseries-capture-mode-chip");
+    const copy = document.getElementById("timeseries-capture-copy");
+    const keepButton = document.getElementById("timeseries-capture-keep-light-button");
+    const forceOffButton = document.getElementById("timeseries-capture-force-off-button");
+    if (!(chip instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(keepButton instanceof HTMLButtonElement) || !(forceOffButton instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const policy = state.model_data?.timeseries_capture ?? null;
+    const mode = policy?.mode === "keep_light_state" ? "keep_light_state" : "force_light_off";
+    const settleSeconds = Math.max(Number(policy?.light_settle_seconds ?? 0), 0);
+
+    chip.textContent = mode === "force_light_off" ? "ปิดไฟชั่วคราว" : "เปิดไฟตามเดิม";
+    chip.className = `mini-chip ${mode === "force_light_off" ? "warning" : "active"}`;
+    copy.textContent = mode === "force_light_off"
+        ? `รอบบันทึก timeseries ถัดไปจะปิดไฟชั่วคราว${settleSeconds > 0 ? ` รอ ${formatNumber(settleSeconds, 0)} วินาที` : ""} แล้วค่อยเปิดกลับหลังถ่าย`
+        : "รอบบันทึก timeseries ถัดไปจะใช้สภาพไฟปัจจุบันแล้วบันทึกทันที";
+
+    keepButton.classList.toggle("is-selected", mode === "keep_light_state");
+    forceOffButton.classList.toggle("is-selected", mode === "force_light_off");
+    keepButton.disabled = timeseriesCapturePolicyPending || mode === "keep_light_state";
+    forceOffButton.disabled = timeseriesCapturePolicyPending || mode === "force_light_off";
+    keepButton.textContent = timeseriesCapturePolicyPending && mode !== "keep_light_state"
+        ? "กำลังบันทึก..."
+        : "เปิดไฟตามเดิม";
+    forceOffButton.textContent = timeseriesCapturePolicyPending && mode !== "force_light_off"
+        ? "กำลังบันทึก..."
+        : "ปิดไฟก่อนถ่าย";
 }
 
 function renderDashboard(state) {
@@ -3549,6 +3621,70 @@ function bindEvents() {
         } finally {
             predictionPreviewPending = false;
             setPredictionPreviewState(false);
+        }
+    });
+
+    $("timeseries-capture-keep-light-button").addEventListener("click", async () => {
+        if (!dashboardState || timeseriesCapturePolicyPending) {
+            return;
+        }
+
+        timeseriesCapturePolicyPending = true;
+        renderTimeseriesCapturePolicy(dashboardState);
+        try {
+            const result = await setTimeseriesCapturePolicy({
+                mode: "keep_light_state",
+            });
+            dashboardState = {
+                ...dashboardState,
+                model_data: {
+                    ...(dashboardState.model_data ?? {}),
+                    timeseries_capture: result.capture_policy,
+                },
+            };
+            renderTimeseriesCapturePolicy(dashboardState);
+            setMessage("ตั้งค่าให้รอบถัดไปเก็บ timeseries โดยไม่ปิดไฟแล้ว");
+            await refreshDashboard(true);
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "อัปเดตโหมด timeseries ไม่สำเร็จ";
+            setMessage(text, "error");
+        } finally {
+            timeseriesCapturePolicyPending = false;
+            if (dashboardState) {
+                renderTimeseriesCapturePolicy(dashboardState);
+            }
+        }
+    });
+
+    $("timeseries-capture-force-off-button").addEventListener("click", async () => {
+        if (!dashboardState || timeseriesCapturePolicyPending) {
+            return;
+        }
+
+        timeseriesCapturePolicyPending = true;
+        renderTimeseriesCapturePolicy(dashboardState);
+        try {
+            const result = await setTimeseriesCapturePolicy({
+                mode: "force_light_off",
+            });
+            dashboardState = {
+                ...dashboardState,
+                model_data: {
+                    ...(dashboardState.model_data ?? {}),
+                    timeseries_capture: result.capture_policy,
+                },
+            };
+            renderTimeseriesCapturePolicy(dashboardState);
+            setMessage("ตั้งค่าให้รอบถัดไปปิดไฟชั่วคราวก่อนเก็บ timeseries แล้ว");
+            await refreshDashboard(true);
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "อัปเดตโหมด timeseries ไม่สำเร็จ";
+            setMessage(text, "error");
+        } finally {
+            timeseriesCapturePolicyPending = false;
+            if (dashboardState) {
+                renderTimeseriesCapturePolicy(dashboardState);
+            }
         }
     });
 
