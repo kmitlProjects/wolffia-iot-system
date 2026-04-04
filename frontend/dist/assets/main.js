@@ -65,6 +65,8 @@ let liveCameraAnalysis = null;
 let analysisAdvancedOpen = false;
 let cameraGapOpen = false;
 let liveAnalysisOpen = false;
+let lightScheduleOpen = false;
+let pumpWaterScheduleOpen = false;
 let lightRulesOpen = false;
 let pumpWaterRulesOpen = false;
 
@@ -282,66 +284,25 @@ function createLayout() {
                     </div>
                 </section>
 
-                <section class="analytics-grid">
-                    <section id="timeseries-section" class="panel timeseries-panel">
-                        <div class="panel-inner">
+                <section id="prediction-section" class="panel prediction-panel">
+                    <div class="panel-inner">
+                        <div class="panel-header">
                             <div class="panel-title">
                                 <h2 class="section-heading">
-                                    ${renderIcon("stat.svg", "Coverage Time Series", "section-icon")}
-                                    <span>Coverage Time Series</span>
+                                    ${renderIcon("HarvestPredict.svg", "Predict Harvest", "section-icon")}
+                                    <span>Predict Harvest</span>
                                 </h2>
-                                <p>แนวโน้มย้อนหลังจากข้อมูลรายชั่วโมงของ coverage, อุณหภูมิ และ pH</p>
+                                <p>ใช้โมเดล baseline จาก Colab เพื่อทำนายวันเก็บเกี่ยวจาก coverage, temp และ pH ปัจจุบัน</p>
                             </div>
-                            <div class="chart-grid">
-                                <article class="chart-card">
-                                    <div class="chart-head">
-                                        <strong>Green Coverage</strong>
-                                        <span id="coverage-chart-meta" class="helper-text">-</span>
-                                    </div>
-                                    <div id="coverage-chart" class="chart-shell"></div>
-                                </article>
-                                <article class="chart-card">
-                                    <div class="chart-head">
-                                        <strong>Temperature</strong>
-                                        <span id="temp-chart-meta" class="helper-text">-</span>
-                                    </div>
-                                    <div id="temp-chart" class="chart-shell"></div>
-                                </article>
-                                <article class="chart-card">
-                                    <div class="chart-head">
-                                        <strong>pH</strong>
-                                        <span id="ph-chart-meta" class="helper-text">-</span>
-                                    </div>
-                                    <div id="ph-chart" class="chart-shell"></div>
-                                </article>
-                            </div>
+                            <button id="prediction-preview-button" class="button-primary" type="button">
+                                Predict Harvest
+                            </button>
                         </div>
-                    </section>
-
-                    <section id="prediction-section" class="panel prediction-panel">
-                        <div class="panel-inner">
-                            <div class="panel-header">
-                                <div class="panel-title">
-                                    <h2 class="section-heading">
-                                        ${renderIcon("HarvestPredict.svg", "Predict Harvest", "section-icon")}
-                                        <span>Predict Harvest</span>
-                                    </h2>
-                                    <p>ใช้โมเดล baseline จาก Colab เพื่อทำนายวันเก็บเกี่ยวจาก coverage, temp และ pH ปัจจุบัน</p>
-                                </div>
-                                <button id="prediction-preview-button" class="button-primary" type="button">
-                                    Predict Harvest
-                                </button>
-                            </div>
-                            <div class="helper-text">
-                                Predict ได้ทันทีจากข้อมูลล่าสุดในระบบ ถ้า temp/pH/coverage ปัจจุบันมีครบ ไม่ต้องอัปโหลดไฟล์ก่อน
-                            </div>
-                            <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
-                            <div id="prediction-preview-copy" class="rule-card rule-empty">
-                                ยังไม่มี prediction preview
-                                กด Predict Harvest เพื่อให้ backend โหลดโมเดลจริงและคำนวณวันเก็บเกี่ยวจากข้อมูลปัจจุบันได้ทันที
-                            </div>
+                        <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
+                        <div id="prediction-preview-copy" class="rule-card rule-empty">
+                            กด Predict Harvest เพื่อเช็กความพร้อมของข้อมูลล่าสุดและวันเก็บเกี่ยวที่คาด
                         </div>
-                    </section>
+                    </div>
                 </section>
 
                 <section class="control-grid">
@@ -380,55 +341,71 @@ function createLayout() {
                                     </button>
                                 </div>
                             </section>
-                            <section class="schedule-builder scheduler-builder">
-                                <div class="schedule-builder-head">
-                                    <div>
-                                        <span class="card-label">Light Schedule</span>
-                                        <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
+                            <button
+                                id="light-schedule-toggle"
+                                class="button-ghost schedule-section-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="light-schedule-content"
+                            >
+                                แสดงการตั้งเวลา light schedule
+                            </button>
+                            <div
+                                id="light-schedule-content"
+                                class="schedule-section-content"
+                                hidden
+                                style="display: none;"
+                            >
+                                <section class="schedule-builder scheduler-builder">
+                                    <div class="schedule-builder-head">
+                                        <div>
+                                            <span class="card-label">Light Schedule</span>
+                                            <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
+                                        </div>
+                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุดและเวลา ระบบจะไม่รับวันย้อนหลัง</span>
                                     </div>
-                                    <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุดและเวลา ระบบจะไม่รับวันย้อนหลัง</span>
-                                </div>
-                                <form id="light-schedule-form" class="stack scheduler-form">
-                                    <div class="inline-fields">
-                                        <label for="light-start-date">
-                                            Start date
-                                            <input id="light-start-date" type="date">
-                                        </label>
-                                        <label for="light-end-date">
-                                            End date
-                                            <input id="light-end-date" type="date">
-                                        </label>
-                                        <label for="light-on-time">
-                                            On time
-                                            <input id="light-on-time" type="time" value="18:00">
-                                        </label>
-                                        <label for="light-off-time">
-                                            Off time
-                                            <input id="light-off-time" type="time" value="22:00">
-                                        </label>
-                                    </div>
-                                    <button class="button-primary schedule-submit-button" type="submit">
-                                        Add Light Schedule
+                                    <form id="light-schedule-form" class="stack scheduler-form">
+                                        <div class="inline-fields">
+                                            <label for="light-start-date">
+                                                Start date
+                                                <input id="light-start-date" type="date">
+                                            </label>
+                                            <label for="light-end-date">
+                                                End date
+                                                <input id="light-end-date" type="date">
+                                            </label>
+                                            <label for="light-on-time">
+                                                On time
+                                                <input id="light-on-time" type="time" value="18:00">
+                                            </label>
+                                            <label for="light-off-time">
+                                                Off time
+                                                <input id="light-off-time" type="time" value="22:00">
+                                            </label>
+                                        </div>
+                                        <button class="button-primary schedule-submit-button" type="submit">
+                                            Add Light Schedule
+                                        </button>
+                                    </form>
+                                    <button
+                                        id="light-rules-toggle"
+                                        class="button-ghost schedule-rules-toggle"
+                                        type="button"
+                                        aria-expanded="false"
+                                        aria-controls="light-rules-content"
+                                    >
+                                        แสดงรายการ light schedule
                                     </button>
-                                </form>
-                                <button
-                                    id="light-rules-toggle"
-                                    class="button-ghost schedule-rules-toggle"
-                                    type="button"
-                                    aria-expanded="false"
-                                    aria-controls="light-rules-content"
-                                >
-                                    แสดงรายการ light schedule
-                                </button>
-                                <div
-                                    id="light-rules-content"
-                                    class="schedule-rules-content"
-                                    hidden
-                                    style="display: none;"
-                                >
-                                    <div id="light-rule-list" class="schedule-rule-grid"></div>
-                                </div>
-                            </section>
+                                    <div
+                                        id="light-rules-content"
+                                        class="schedule-rules-content"
+                                        hidden
+                                        style="display: none;"
+                                    >
+                                        <div id="light-rule-list" class="schedule-rule-grid"></div>
+                                    </div>
+                                </section>
+                            </div>
                         </div>
                     </section>
 
@@ -467,61 +444,77 @@ function createLayout() {
                                     </button>
                                 </div>
                             </section>
-                            <section class="schedule-builder scheduler-builder">
-                                <div class="schedule-builder-head">
-                                    <div>
-                                        <span class="card-label">Water Pump Schedule</span>
-                                        <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
+                            <button
+                                id="pump-water-schedule-toggle"
+                                class="button-ghost schedule-section-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="pump-water-schedule-content"
+                            >
+                                แสดงการตั้งเวลา water pump schedule
+                            </button>
+                            <div
+                                id="pump-water-schedule-content"
+                                class="schedule-section-content"
+                                hidden
+                                style="display: none;"
+                            >
+                                <section class="schedule-builder scheduler-builder">
+                                    <div class="schedule-builder-head">
+                                        <div>
+                                            <span class="card-label">Water Pump Schedule</span>
+                                            <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
+                                        </div>
+                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด เวลา และจำนวนลิตรต่อรอบ</span>
                                     </div>
-                                    <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด เวลา และจำนวนลิตรต่อรอบ</span>
-                                </div>
-                                <form id="pump-water-schedule-form" class="stack scheduler-form">
-                                    <div class="inline-fields">
-                                        <label for="pump-water-start-date">
-                                            Start date
-                                            <input id="pump-water-start-date" type="date">
-                                        </label>
-                                        <label for="pump-water-end-date">
-                                            End date
-                                            <input id="pump-water-end-date" type="date">
-                                        </label>
-                                        <label for="pump-water-start-time">
-                                            Start time
-                                            <input id="pump-water-start-time" type="time" value="08:00">
-                                        </label>
-                                        <label for="pump-water-schedule-liters">
-                                            ปริมาณน้ำ (L)
-                                            <input
-                                                id="pump-water-schedule-liters"
-                                                min="0.1"
-                                                step="0.1"
-                                                type="number"
-                                                value="1"
-                                            >
-                                        </label>
-                                    </div>
-                                    <button class="button-primary schedule-submit-button" type="submit">
-                                        Add Water Pump Schedule
+                                    <form id="pump-water-schedule-form" class="stack scheduler-form">
+                                        <div class="inline-fields">
+                                            <label for="pump-water-start-date">
+                                                Start date
+                                                <input id="pump-water-start-date" type="date">
+                                            </label>
+                                            <label for="pump-water-end-date">
+                                                End date
+                                                <input id="pump-water-end-date" type="date">
+                                            </label>
+                                            <label for="pump-water-start-time">
+                                                Start time
+                                                <input id="pump-water-start-time" type="time" value="08:00">
+                                            </label>
+                                            <label for="pump-water-schedule-liters">
+                                                ปริมาณน้ำ (L)
+                                                <input
+                                                    id="pump-water-schedule-liters"
+                                                    min="0.1"
+                                                    step="0.1"
+                                                    type="number"
+                                                    value="1"
+                                                >
+                                            </label>
+                                        </div>
+                                        <button class="button-primary schedule-submit-button" type="submit">
+                                            Add Water Pump Schedule
+                                        </button>
+                                    </form>
+                                    <button
+                                        id="pump-water-rules-toggle"
+                                        class="button-ghost schedule-rules-toggle"
+                                        type="button"
+                                        aria-expanded="false"
+                                        aria-controls="pump-water-rules-content"
+                                    >
+                                        แสดงรายการ water pump schedule
                                     </button>
-                                </form>
-                                <button
-                                    id="pump-water-rules-toggle"
-                                    class="button-ghost schedule-rules-toggle"
-                                    type="button"
-                                    aria-expanded="false"
-                                    aria-controls="pump-water-rules-content"
-                                >
-                                    แสดงรายการ water pump schedule
-                                </button>
-                                <div
-                                    id="pump-water-rules-content"
-                                    class="schedule-rules-content"
-                                    hidden
-                                    style="display: none;"
-                                >
-                                    <div id="pump-water-rule-list" class="schedule-rule-grid"></div>
-                                </div>
-                            </section>
+                                    <div
+                                        id="pump-water-rules-content"
+                                        class="schedule-rules-content"
+                                        hidden
+                                        style="display: none;"
+                                    >
+                                        <div id="pump-water-rule-list" class="schedule-rule-grid"></div>
+                                    </div>
+                                </section>
+                            </div>
                         </div>
                     </section>
                 </section>
@@ -537,6 +530,43 @@ function createLayout() {
                         </div>
                         <div id="pump-fertilizer-list" class="fertilizer-grid"></div>
                     </div>
+                </section>
+
+                <section class="analytics-grid">
+                    <section id="timeseries-section" class="panel timeseries-panel">
+                        <div class="panel-inner">
+                            <div class="panel-title">
+                                <h2 class="section-heading">
+                                    ${renderIcon("stat.svg", "Coverage Time Series", "section-icon")}
+                                    <span>Coverage Time Series</span>
+                                </h2>
+                                <p>แนวโน้มย้อนหลังจากข้อมูลรายชั่วโมงของ coverage, อุณหภูมิ และ pH</p>
+                            </div>
+                            <div class="chart-grid">
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>Green Coverage</strong>
+                                        <span id="coverage-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="coverage-chart" class="chart-shell"></div>
+                                </article>
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>Temperature</strong>
+                                        <span id="temp-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="temp-chart" class="chart-shell"></div>
+                                </article>
+                                <article class="chart-card">
+                                    <div class="chart-head">
+                                        <strong>pH</strong>
+                                        <span id="ph-chart-meta" class="helper-text">-</span>
+                                    </div>
+                                    <div id="ph-chart" class="chart-shell"></div>
+                                </article>
+                            </div>
+                        </div>
+                    </section>
                 </section>
 
                 <section id="timeseries-gap-section" class="panel timeseries-gap-panel">
@@ -1879,10 +1909,12 @@ function renderPredictionPreview(state) {
     const latestImage = state.image_analysis;
 
     if (!predictionPreview) {
+        copyContainer.classList.add("rule-empty");
+        copyContainer.classList.remove("prediction-preview-copy-compact");
         summaryContainer.innerHTML = `
             <article class="summary-card">
                 <span class="card-label">Active Cycle</span>
-                <strong>${cycle?.cycle_id ? escapeHtml(cycle.cycle_id) : "No active cycle"}</strong>
+                <strong class="summary-compact-text">${cycle?.cycle_id ? escapeHtml(cycle.cycle_id) : "No active cycle"}</strong>
                 <span class="helper-text">
                     ${cycle?.target_harvest_days ? `target ${escapeHtml(String(cycle.target_harvest_days))} days` : "เริ่มรอบปลูกก่อนเพื่อให้ระบบผูกข้อมูลกับรอบนั้น"}
                 </span>
@@ -1899,8 +1931,7 @@ function renderPredictionPreview(state) {
             </article>
         `;
         copyContainer.innerHTML = `
-            ยังไม่มี prediction preview
-            กด Predict Harvest เพื่อดู readiness ของข้อมูล, จำนวน history ที่มี, และ baseline วันเก็บเกี่ยวได้เลยโดยไม่ต้องอัปโหลดไฟล์ ถ้าข้อมูลล่าสุดครบ
+            กด Predict Harvest เพื่อเช็กความพร้อมของข้อมูลล่าสุดและวันเก็บเกี่ยวที่คาด
         `;
         return;
     }
@@ -1915,7 +1946,29 @@ function renderPredictionPreview(state) {
     const confidencePercent = prediction.confidence_score != null
         ? Math.round(prediction.confidence_score * 100)
         : null;
+    const coverageValue = modelInput.latest_daily_image_coverage_percent ?? modelInput.latest_green_coverage_percent;
+    const cycleDayLabel = cycleSnapshot.cycle_day_index != null && cycleSnapshot.target_harvest_days != null
+        ? `${formatNumber(cycleSnapshot.cycle_day_index, 0)} / ${formatNumber(cycleSnapshot.target_harvest_days, 0)}`
+        : "-";
+    const readinessLabel = model.available
+        ? (readiness.ready ? "Predicted" : "Needs more data")
+        : "Model unavailable";
+    const dataPoints = [
+        `coverage ${formatNumber(coverageValue, 2)}%`,
+        `temp ${formatNumber(modelInput.latest_temp_c, 1)} °C`,
+        `pH ${formatNumber(modelInput.latest_ph, 2)}`,
+    ];
+    const issueText = readiness.blocking_reasons.length > 0
+        ? readiness.blocking_reasons.join(" • ")
+        : readiness.warnings.join(" • ");
+    const compactCopy = model.available
+        ? readiness.ready
+            ? `อิง ${dataPoints.join(" • ")} ของรอบปลูกนี้`
+            : issueText || "ข้อมูลยังไม่พร้อมพอสำหรับทำนาย"
+        : `backend ยังโหลดโมเดลไม่ได้${model.error ? `: ${model.error}` : ""}`;
 
+    copyContainer.classList.remove("rule-empty");
+    copyContainer.classList.add("prediction-preview-copy-compact");
     summaryContainer.innerHTML = `
         <article class="summary-card">
             <span class="card-label">Model Result</span>
@@ -1924,52 +1977,28 @@ function renderPredictionPreview(state) {
         </article>
         <article class="summary-card">
             <span class="card-label">Predicted Harvest</span>
-            <strong>${escapeHtml(formatTimestamp(prediction.predicted_harvest_at))}</strong>
+            <strong class="summary-compact-text">${escapeHtml(formatTimestamp(prediction.predicted_harvest_at))}</strong>
             <span class="helper-text">วันที่คาดว่าจะเก็บเกี่ยวได้จากโมเดล</span>
         </article>
         <article class="summary-card">
             <span class="card-label">Confidence</span>
             <strong>${confidencePercent != null ? `${confidencePercent}%` : "-"}</strong>
             <span class="helper-text">
-                ${prediction.uncertainty_days != null ? `uncertainty ±${formatNumber(prediction.uncertainty_days, 2)} days` : "ยังไม่มี confidence จากโมเดล"}
+                ${cycleDayLabel !== "-" ? `day ${cycleDayLabel}` : "ยังไม่มี cycle day"}${prediction.uncertainty_days != null ? ` • ±${formatNumber(prediction.uncertainty_days, 2)} days` : ""}
             </span>
-        </article>
-        <article class="summary-card">
-            <span class="card-label">Cycle Day</span>
-            <strong>${formatNumber(cycleSnapshot.cycle_day_index, 0)} / ${formatNumber(cycleSnapshot.target_harvest_days, 0)}</strong>
-            <span class="helper-text">baseline ${formatNumber(modelInput.baseline_expected_days_to_harvest, 0)} days left</span>
         </article>
     `;
 
     copyContainer.innerHTML = `
-        <div class="rule-title">
-            <div>
-                <strong>${model.available ? "Baseline Model Prediction" : "Model Unavailable"}</strong>
-                <div class="rule-meta">${escapeHtml(model.name ?? predictionPreview.prediction_type)}</div>
-            </div>
+        <div class="panel-badge-row">
             <span class="mini-chip ${readinessClass}">
-                ${model.available ? (readiness.ready ? "Predicted" : "Needs more data") : "Fallback"}
+                ${escapeHtml(readinessLabel)}
             </span>
-        </div>
-        <div class="history-metrics">
-            <span>Temp ${formatNumber(modelInput.latest_temp_c, 1)} °C</span>
-            <span>pH ${formatNumber(modelInput.latest_ph, 2)}</span>
-            <span>Coverage ${formatNumber(modelInput.latest_daily_image_coverage_percent ?? modelInput.latest_green_coverage_percent, 2)}%</span>
+            <span class="helper-text">${escapeHtml(model.name ?? predictionPreview.prediction_type)}</span>
         </div>
         <p class="helper-text">
-            ${model.available
-                ? `โมเดลจาก Colab ถูกโหลดแล้วและใช้ feature ปัจจุบัน ${formatNumber(model.feature_count, 0)} ตัวในการทำนายวันเก็บเกี่ยว`
-                : `backend ยังโหลดโมเดลไม่ได้${model.error ? `: ${escapeHtml(model.error)}` : ""}`}
+            ${escapeHtml(compactCopy)}
         </p>
-        <div class="rule-meta">
-            Blocking: ${escapeHtml(readiness.blocking_reasons.join(" • ") || "none")}
-        </div>
-        <div class="rule-meta">
-            Warnings: ${escapeHtml(readiness.warnings.join(" • ") || "none")}
-        </div>
-        <div class="rule-meta">
-            Predicted harvest: ${escapeHtml(formatTimestamp(prediction.predicted_harvest_at))} • baseline ${formatNumber(prediction.baseline_expected_days_to_harvest, 0)} days
-        </div>
     `;
 }
 
@@ -2677,6 +2706,42 @@ function setCameraGapOpenState(open) {
     content.setAttribute("aria-hidden", open ? "false" : "true");
 }
 
+function setLightScheduleOpenState(open) {
+    lightScheduleOpen = open;
+    const button = document.getElementById("light-schedule-toggle");
+    const content = document.getElementById("light-schedule-content");
+    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
+        return;
+    }
+
+    button.textContent = open
+        ? "ซ่อนการตั้งเวลา light schedule"
+        : "แสดงการตั้งเวลา light schedule";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.classList.toggle("open", open);
+    content.hidden = !open;
+    content.style.display = open ? "grid" : "none";
+    content.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function setPumpWaterScheduleOpenState(open) {
+    pumpWaterScheduleOpen = open;
+    const button = document.getElementById("pump-water-schedule-toggle");
+    const content = document.getElementById("pump-water-schedule-content");
+    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
+        return;
+    }
+
+    button.textContent = open
+        ? "ซ่อนการตั้งเวลา water pump schedule"
+        : "แสดงการตั้งเวลา water pump schedule";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.classList.toggle("open", open);
+    content.hidden = !open;
+    content.style.display = open ? "grid" : "none";
+    content.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
 function setLightRulesOpenState(open) {
     lightRulesOpen = open;
     const button = document.getElementById("light-rules-toggle");
@@ -3203,6 +3268,8 @@ function bindEvents() {
     setAnalysisAdvancedOpenState(false);
     setCameraGapOpenState(false);
     setLiveAnalysisOpenState(false);
+    setLightScheduleOpenState(false);
+    setPumpWaterScheduleOpenState(false);
     setLightRulesOpenState(false);
     setPumpWaterRulesOpenState(false);
     setDatasetExportState(false);
@@ -3251,6 +3318,14 @@ function bindEvents() {
 
     $("camera-gap-toggle").addEventListener("click", () => {
         setCameraGapOpenState(!cameraGapOpen);
+    });
+
+    $("light-schedule-toggle").addEventListener("click", () => {
+        setLightScheduleOpenState(!lightScheduleOpen);
+    });
+
+    $("pump-water-schedule-toggle").addEventListener("click", () => {
+        setPumpWaterScheduleOpenState(!pumpWaterScheduleOpen);
     });
 
     $("light-rules-toggle").addEventListener("click", () => {
@@ -3331,6 +3406,8 @@ function bindEvents() {
         setCameraGapOpenState(false);
         setLiveAnalysisOpenState(false);
         setAnalysisAdvancedOpenState(false);
+        setLightScheduleOpenState(false);
+        setPumpWaterScheduleOpenState(false);
         setLightRulesOpenState(false);
         setPumpWaterRulesOpenState(false);
     });
