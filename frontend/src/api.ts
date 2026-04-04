@@ -109,7 +109,7 @@ export function fetchAnomalyWatchStatus(): Promise<{
     return requestJson("/anomaly-watch/status")
 }
 
-export function fetchAnomalyAlerts(limit = 5): Promise<{
+export function fetchAnomalyAlerts(limit = 1): Promise<{
     items: AnomalyAlert[]
 }> {
     return requestJson(`/anomaly-alerts?limit=${limit}`)

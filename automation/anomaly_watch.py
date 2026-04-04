@@ -121,7 +121,7 @@ class AnomalyWatcher:
                 **self._serialize_runtime(),
             }
 
-    def list_alerts(self, limit: int = 20):
+    def list_alerts(self, limit: int = 1):
         safe_limit = max(min(int(limit), 100), 1)
         return list(
             self.collection.find().sort([("detected_at", -1), ("_id", -1)]).limit(safe_limit)

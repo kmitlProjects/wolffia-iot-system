@@ -908,6 +908,45 @@ label {
     gap: 0.62rem;
 }
 
+.anomaly-watch-head-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+}
+
+.anomaly-watch-db-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.48rem;
+    min-height: 2rem;
+    padding: 0.42rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid rgba(18, 128, 106, 0.14);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--accent-deep);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.anomaly-watch-db-button[aria-busy="true"] {
+    opacity: 0.72;
+}
+
+.anomaly-watch-db-button:disabled {
+    cursor: wait;
+}
+
+.anomaly-watch-db-icon,
+.anomaly-log-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    object-fit: contain;
+    opacity: 0.88;
+    flex-shrink: 0;
+}
+
 .anomaly-watch-preview {
     border-radius: 1rem;
     overflow: hidden;
@@ -922,18 +961,21 @@ label {
     object-fit: cover;
 }
 
-.anomaly-log-list {
+.anomaly-log-latest {
     display: grid;
-    gap: 0.5rem;
 }
 
 .anomaly-log-item {
     display: grid;
-    gap: 0.3rem;
+    gap: 0.45rem;
     padding: 0.72rem 0.82rem;
     border-radius: var(--radius-md);
     border: 1px solid rgba(18, 128, 106, 0.1);
     background: rgba(255, 255, 255, 0.72);
+}
+
+.anomaly-log-item-latest {
+    gap: 0.52rem;
 }
 
 .anomaly-log-head {
@@ -942,6 +984,20 @@ label {
     justify-content: space-between;
     gap: 0.5rem;
     flex-wrap: wrap;
+}
+
+.anomaly-log-source,
+.anomaly-log-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.anomaly-log-source {
+    color: var(--accent-deep);
+    font-size: 0.84rem;
+    font-weight: 700;
 }
 
 .anomaly-log-item strong {

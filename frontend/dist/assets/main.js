@@ -22,7 +22,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260404be";
+} from "./api.js?v=20260404bf";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -333,7 +333,13 @@ function createLayout() {
                         <article class="summary-card anomaly-watch-card">
                             <div class="summary-card-head">
                                 <span class="card-label">Anomaly Watch</span>
-                                <span id="anomaly-watch-chip" class="mini-chip">-</span>
+                                <div class="anomaly-watch-head-tools">
+                                    <button id="anomaly-db-refresh-button" class="anomaly-watch-db-button" type="button">
+                                        ${renderIcon("db.svg", "โหลดข้อความล่าสุดจาก DB", "anomaly-watch-db-icon")}
+                                        <span>โหลด DB ล่าสุด</span>
+                                    </button>
+                                    <span id="anomaly-watch-chip" class="mini-chip">-</span>
+                                </div>
                             </div>
                             <strong id="anomaly-watch-title">-</strong>
                             <span id="anomaly-watch-copy" class="helper-text">-</span>
@@ -341,7 +347,7 @@ function createLayout() {
                             <div id="anomaly-watch-preview-wrap" class="anomaly-watch-preview hidden">
                                 <img id="anomaly-watch-preview" class="anomaly-watch-preview-image" alt="ภาพแจ้งเตือนล่าสุด">
                             </div>
-                            <div id="anomaly-log-list" class="anomaly-log-list"></div>
+                            <div id="anomaly-log-latest" class="anomaly-log-latest"></div>
                         </article>
                     </div>
                 </aside>
@@ -3404,8 +3410,9 @@ function renderAnomalyWatch(state) {
     const lastCopy = document.getElementById("anomaly-watch-last-copy");
     const previewWrap = document.getElementById("anomaly-watch-preview-wrap");
     const previewImage = document.getElementById("anomaly-watch-preview");
-    const logList = document.getElementById("anomaly-log-list");
-    if (!(chip instanceof HTMLElement) || !(title instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(lastCopy instanceof HTMLElement) || !(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement) || !(logList instanceof HTMLElement)) {
+    const latestLog = document.getElementById("anomaly-log-latest");
+    const dbRefreshButton = document.getElementById("anomaly-db-refresh-button");
+    if (!(chip instanceof HTMLElement) || !(title instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(lastCopy instanceof HTMLElement) || !(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement) || !(latestLog instanceof HTMLElement) || !(dbRefreshButton instanceof HTMLButtonElement)) {
         return;
     }
 
@@ -3420,7 +3427,9 @@ function renderAnomalyWatch(state) {
         lastCopy.textContent = "-";
         previewWrap.classList.add("hidden");
         previewImage.removeAttribute("src");
-        logList.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี anomaly log</div>`;
+        dbRefreshButton.disabled = true;
+        dbRefreshButton.setAttribute("aria-busy", "false");
+        latestLog.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีข้อความ anomaly จาก DB</div>`;
         return;
     }
 
@@ -3433,6 +3442,8 @@ function renderAnomalyWatch(state) {
     const hasError = Boolean(status.last_error);
     const latestPreviewUrl = anomalyState?.latest_preview_url ?? null;
     const latestPreviewToken = anomalyState?.latest_preview_token ?? latestAlert?._id ?? latestAlert?.detected_at ?? "";
+    dbRefreshButton.disabled = anomalyPollPending;
+    dbRefreshButton.setAttribute("aria-busy", anomalyPollPending ? "true" : "false");
 
     if (hasError) {
         chip.textContent = "มีปัญหา";
@@ -3458,7 +3469,7 @@ function renderAnomalyWatch(state) {
         pollSeconds > 0 ? `ตรวจทุก ${formatNumber(pollSeconds, 0)} วินาที` : null,
         minAreaPercent > 0 ? `แจ้งเมื่อ blob เกิน ${formatNumber(minAreaPercent, 1)}%` : null,
         webhookConfigured ? "มี webhook แล้ว" : "เก็บเฉพาะ text log",
-        "ไม่บันทึกไฟล์ภาพลงระบบ",
+        "เก็บภาพล่าสุดไว้ใน memory เท่านั้น",
     ].filter(Boolean).join(" • ");
 
     if (latestPreviewUrl && latestAlert?.detected_at) {
@@ -3473,13 +3484,10 @@ function renderAnomalyWatch(state) {
     if (hasError) {
         lastCopy.textContent = String(status.last_error || "-");
     } else if (latestAlert?.detected_at) {
-        const blobPercent = latestAlert.largest_blob_percent;
         lastCopy.textContent = [
-            `ล่าสุด ${formatTimestamp(latestAlert.detected_at)}`,
-            blobPercent !== null && blobPercent !== undefined
-                ? `blob ${formatNumber(blobPercent, 2)}%`
-                : null,
-            latestAlert.summary_text || "บันทึกเป็น text log แล้ว",
+            `ภาพล่าสุด ${formatTimestamp(latestAlert.detected_at)}`,
+            "เมื่อพบรอบใหม่จะเปลี่ยนรูปนี้ทันที",
+            "ข้อความด้านล่างดึงจาก DB ล่าสุด 1 รายการ",
         ].filter(Boolean).join(" • ");
     } else if (status.last_checked_at) {
         lastCopy.textContent = `เช็กล่าสุด ${formatTimestamp(status.last_checked_at)} • ยังไม่พบ alert`;
@@ -3487,33 +3495,46 @@ function renderAnomalyWatch(state) {
         lastCopy.textContent = "กำลังรอ baseline รอบแรกจากกล้อง";
     }
 
-    renderAnomalyLog(logList, anomalyAlerts);
+    renderLatestAnomalyLog(latestLog, latestAlert);
 }
 
-function renderAnomalyLog(container, alerts) {
-    if (alerts.length === 0) {
-        container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี anomaly log</div>`;
+function renderLatestAnomalyLog(container, alert) {
+    if (!alert) {
+        container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีข้อความ anomaly จาก DB</div>`;
         return;
     }
 
-    container.innerHTML = alerts
-        .slice(0, 5)
-        .map((alert) => {
-            const severity = Number(alert.largest_blob_percent ?? 0) >= 5 ? "danger" : "warning";
-            const summary = alert.summary_text || "ตรวจพบสิ่งแปลกปลอม";
-            return `
-                <article class="anomaly-log-item">
-                    <div class="anomaly-log-head">
-                        <span class="mini-chip ${severity}">
-                            ${escapeHtml(`blob ${formatNumber(alert.largest_blob_percent, 2)}%`)}
-                        </span>
-                        <span class="helper-text">${escapeHtml(formatTimestamp(alert.detected_at))}</span>
-                    </div>
-                    <strong>${escapeHtml(summary)}</strong>
-                </article>
-            `;
-        })
-        .join("");
+    const severity = Number(alert.largest_blob_percent ?? 0) >= 5 ? "danger" : "warning";
+    const summary = alert.summary_text || "ตรวจพบสิ่งแปลกปลอม";
+    const details = [
+        alert.changed_area_percent !== null && alert.changed_area_percent !== undefined
+            ? `changed ${formatNumber(alert.changed_area_percent, 2)}%`
+            : null,
+        alert.green_coverage_percent !== null && alert.green_coverage_percent !== undefined
+            ? `coverage ${formatNumber(alert.green_coverage_percent, 2)}%`
+            : null,
+        alert.light_is_on === null || alert.light_is_on === undefined
+            ? null
+            : `ไฟ ${alert.light_is_on ? "เปิด" : "ปิด"}`,
+    ].filter(Boolean);
+    container.innerHTML = `
+        <article class="anomaly-log-item anomaly-log-item-latest">
+            <div class="anomaly-log-head">
+                <div class="anomaly-log-source">
+                    ${renderIcon("db.svg", "ข้อความล่าสุดจาก DB", "anomaly-log-icon")}
+                    <span>Latest DB Log</span>
+                </div>
+                <span class="helper-text">${escapeHtml(formatTimestamp(alert.detected_at))}</span>
+            </div>
+            <div class="anomaly-log-metrics">
+                <span class="mini-chip ${severity}">
+                    ${escapeHtml(`blob ${formatNumber(alert.largest_blob_percent, 2)}%`)}
+                </span>
+                ${details.map((detail) => `<span class="mini-chip">${escapeHtml(String(detail))}</span>`).join("")}
+            </div>
+            <strong>${escapeHtml(summary)}</strong>
+        </article>
+    `;
 }
 
 function queueAnomalyRefresh(delayMs = ANOMALY_POLL_MS) {
@@ -3541,7 +3562,7 @@ async function refreshAnomalyWatchFast() {
     try {
         const [statusResponse, alertsResponse] = await Promise.all([
             fetchAnomalyWatchStatus(),
-            fetchAnomalyAlerts(5),
+            fetchAnomalyAlerts(1),
         ]);
         anomalyWatchState = {
             status: statusResponse.watcher,
@@ -3549,9 +3570,9 @@ async function refreshAnomalyWatchFast() {
             latest_preview_url: statusResponse.latest_preview_url ?? null,
             latest_preview_token: statusResponse.latest_preview_token ?? null,
         };
-        anomalyAlerts = alertsResponse.items;
+        anomalyAlerts = alertsResponse.items.slice(0, 1);
 
-        const newestAlertId = alertsResponse.items[0]?._id ?? null;
+        const newestAlertId = anomalyAlerts[0]?._id ?? null;
         if (!anomalyAlertPrimed) {
             lastSeenAnomalyAlertId = newestAlertId;
             anomalyAlertPrimed = true;
@@ -4066,6 +4087,12 @@ function bindEvents() {
                 renderTimeseriesCapturePolicy(dashboardState);
             }
         }
+    });
+    $("anomaly-db-refresh-button").addEventListener("click", async () => {
+        if (anomalyPollPending) {
+            return;
+        }
+        await refreshAnomalyWatchFast();
     });
 
     $("light-on-button").addEventListener("click", async () => {

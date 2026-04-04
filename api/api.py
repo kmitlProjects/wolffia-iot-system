@@ -514,7 +514,7 @@ def get_latest_anomaly_alert():
     return serialize_anomaly_alert(anomaly_watcher.get_latest_alert())
 
 
-def get_anomaly_alert_history(limit: int = 20):
+def get_anomaly_alert_history(limit: int = 1):
     return [serialize_anomaly_alert(item) for item in anomaly_watcher.list_alerts(limit)]
 
 
@@ -961,7 +961,7 @@ def reset_anomaly_watch_baseline():
 
 
 @app.get("/anomaly-alerts")
-def anomaly_alerts(limit: int = 20):
+def anomaly_alerts(limit: int = 1):
     return {"items": get_anomaly_alert_history(limit)}
 
 
