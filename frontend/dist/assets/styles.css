@@ -81,9 +81,9 @@ label {
 }
 
 .app-shell {
-    width: min(1380px, calc(100vw - 1.25rem));
-    margin: 0 auto;
-    padding: 1rem 0 2rem;
+    width: min(1760px, calc(100vw - 1rem));
+    margin: 0 auto 0 0.5rem;
+    padding: 1rem 0 2.35rem;
 }
 
 .app-shell > * + * {
@@ -233,6 +233,56 @@ label {
     margin-top: 0.7rem;
 }
 
+.info-rail-panel {
+    align-self: start;
+}
+
+.info-rail-inner {
+    gap: 0.9rem;
+}
+
+.info-rail-copy {
+    gap: 0.32rem;
+}
+
+.info-rail-copy h1 {
+    margin: 0;
+    font-size: clamp(1.08rem, 2vw, 1.42rem);
+    line-height: 1.08;
+}
+
+.info-rail-copy p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.38;
+}
+
+.info-rail-summary {
+    display: grid;
+    gap: 0.7rem;
+}
+
+.info-rail-card {
+    gap: 0.34rem;
+    padding: 0.82rem 0.9rem;
+}
+
+.info-rail-card strong {
+    font-size: 1rem;
+    line-height: 1.16;
+}
+
+.info-rail-panel .hero-stat-inline,
+.info-rail-panel .hero-feature-list {
+    gap: 0.45rem;
+}
+
+.info-rail-panel .status-badge,
+.info-rail-panel .mini-chip {
+    justify-content: flex-start;
+}
+
 .workflow-panel {
     grid-column: 1 / -1;
 }
@@ -355,13 +405,7 @@ label {
 }
 
 .camera-roi-box {
-    position: absolute;
-    border: 3px solid rgba(255, 210, 80, 0.95);
-    box-shadow:
-        0 0 0 1px rgba(24, 48, 44, 0.45),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-    pointer-events: none;
-    z-index: 2;
+    display: none !important;
 }
 
 .camera-roi-box.hidden {
@@ -386,21 +430,69 @@ label {
     display: none;
 }
 
-.camera-analysis-block {
-    display: grid;
-    gap: 0.85rem;
-    margin-top: 1rem;
+.live-analysis-shell {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 0.85rem;
+    background:
+        linear-gradient(180deg, rgba(13, 23, 22, 0.12), rgba(13, 23, 22, 0.3)),
+        #18322e;
 }
 
+.live-analysis-shell-grid {
+    height: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    align-items: stretch;
+}
+
+.live-analysis-shell .image-tile {
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 0;
+    padding: 0.65rem;
+    border-radius: 20px;
+    background: rgba(248, 252, 248, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.live-analysis-shell .image-tile img {
+    height: 100%;
+    min-height: 0;
+    aspect-ratio: auto;
+}
+
+.camera-analysis-block,
 .camera-gap-block {
     display: grid;
     gap: 0.85rem;
+    min-width: 0;
     margin-top: 1rem;
 }
 
 .camera-gap-content {
     display: grid;
     gap: 0.8rem;
+}
+
+.live-analysis-content {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.camera-panel.live-analysis-open .camera-stream,
+.camera-panel.live-analysis-open .camera-overlay {
+    display: none !important;
+}
+
+.camera-panel.live-analysis-open .live-analysis-shell {
+    display: grid !important;
+}
+
+.timeseries-gap-panel .camera-gap-block {
+    margin-top: 0;
 }
 
 .camera-gap-tools {
@@ -417,7 +509,7 @@ label {
 .camera-gap-list {
     display: grid;
     gap: 0.85rem;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .gap-card {
@@ -489,11 +581,11 @@ label {
 }
 
 .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .summary-grid {
-    grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .daily-highlight-grid {
@@ -501,7 +593,7 @@ label {
 }
 
 .chart-grid {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .image-strip {
@@ -703,6 +795,7 @@ label {
 }
 
 .analysis-advanced-content,
+.schedule-rules-content,
 .camera-gap-content,
 .live-analysis-content {
     display: grid;
@@ -710,12 +803,14 @@ label {
 }
 
 .analysis-advanced-content[hidden],
+.schedule-rules-content[hidden],
 .camera-gap-content[hidden],
 .live-analysis-content[hidden] {
     display: none !important;
 }
 
 .analysis-advanced-toggle,
+.schedule-rules-toggle,
 .camera-gap-toggle,
 .live-analysis-toggle {
     width: 100%;
@@ -732,6 +827,7 @@ label {
 }
 
 .analysis-advanced-toggle.open,
+.schedule-rules-toggle.open,
 .live-analysis-toggle.open {
     background: rgba(18, 128, 106, 0.1);
     border-color: rgba(18, 128, 106, 0.22);
@@ -1561,7 +1657,8 @@ label {
 
 @media (min-width: 720px) {
     .app-shell {
-        width: min(1380px, calc(100vw - 2rem));
+        width: min(1760px, calc(100vw - 2rem));
+        margin-left: 1rem;
         padding-top: 1.5rem;
     }
 
@@ -1611,8 +1708,13 @@ label {
 
 @media (min-width: 980px) {
     .dashboard-grid {
-        grid-template-columns: 1.4fr 0.85fr;
+        grid-template-columns: minmax(0, 1.32fr) minmax(320px, 1fr);
         align-items: stretch;
+        gap: 1.1rem;
+    }
+
+    .info-rail-panel {
+        grid-column: 1 / -1;
     }
 
     .camera-panel {
@@ -1667,7 +1769,8 @@ label {
     }
 
     .analysis-hub-panel,
-    .fertilizer-section-panel {
+    .fertilizer-section-panel,
+    .timeseries-gap-panel {
         grid-column: 1 / -1;
     }
 
@@ -1692,7 +1795,7 @@ label {
     .status-panel .metric-grid,
     .status-panel .summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: minmax(0, 1fr);
+        grid-auto-rows: minmax(8.75rem, 1fr);
     }
 
     .fertilizer-grid {
@@ -1719,8 +1822,80 @@ label {
 }
 
 @media (min-width: 1180px) {
+    .app-shell {
+        width: min(1820px, calc(100vw - 2.5rem));
+        margin-left: 1.25rem;
+    }
+
     .dashboard-grid {
-        grid-template-columns: 1.48fr 0.82fr;
+        grid-template-columns: minmax(228px, 244px) minmax(0, 1.78fr) minmax(380px, 1.08fr);
+        align-items: start;
+        gap: 1.15rem;
+    }
+
+    .info-rail-panel {
+        grid-column: 1;
+        grid-row: 1 / span 4;
+        position: sticky;
+        top: 1rem;
+        z-index: 2;
+    }
+
+    .info-rail-panel .panel-inner {
+        padding: 0.85rem 0.8rem 0.95rem;
+    }
+
+    .info-rail-inner {
+        gap: 0.7rem;
+    }
+
+    .info-rail-copy {
+        gap: 0.24rem;
+        padding: 0 0.1rem 0.1rem;
+    }
+
+    .info-rail-copy h1 {
+        font-size: 1.06rem;
+        line-height: 1.16;
+    }
+
+    .info-rail-copy p {
+        font-size: 0.84rem;
+        line-height: 1.35;
+    }
+
+    .info-rail-summary {
+        gap: 0.55rem;
+    }
+
+    .info-rail-card {
+        padding: 0.76rem 0.8rem;
+        border-radius: 14px;
+    }
+
+    .info-rail-card .helper-text {
+        font-size: 0.78rem;
+    }
+
+    .info-rail-panel .hero-stat-inline,
+    .info-rail-panel .hero-feature-list {
+        gap: 0.32rem;
+    }
+
+    .camera-panel {
+        grid-column: 2;
+    }
+
+    .status-panel {
+        grid-column: 3;
+    }
+
+    .analytics-grid,
+    .control-grid,
+    .timeseries-gap-panel,
+    .fertilizer-section-panel,
+    .analysis-hub-panel {
+        grid-column: 2 / -1;
     }
 
     .daily-highlight-grid {

@@ -65,6 +65,8 @@ let liveCameraAnalysis = null;
 let analysisAdvancedOpen = false;
 let cameraGapOpen = false;
 let liveAnalysisOpen = false;
+let lightRulesOpen = false;
+let pumpWaterRulesOpen = false;
 
 function $(id) {
     const element = document.getElementById(id);
@@ -99,43 +101,43 @@ function renderQuickLink(filename, label, href) {
 function createLayout() {
     return `
         <div class="app-shell">
-            <header class="hero">
-                <div class="hero-header">
-                    <div class="hero-copy">
-                        <span class="eyebrow">Wolffia Dashboard</span>
-                        <h1>ภาพสด ควบคุมอุปกรณ์ และข้อมูลสำคัญในหน้าเดียว</h1>
-                        <p>
-                            หน้าเดียวสำหรับดูบ่อ เช็กค่าล่าสุด ควบคุมอุปกรณ์ และดูข้อมูลที่จำเป็นก่อนตัดสินใจ
-                        </p>
-                    </div>
-                    <div class="hero-summary-grid">
-                        <article class="hero-stat-card">
-                            <span class="card-label">ระบบ</span>
-                            <div class="hero-stat-inline">
-                                <span id="connection-badge" class="status-badge">กำลังเชื่อมต่อ</span>
-                                <span id="timezone-chip" class="mini-chip">-</span>
-                            </div>
-                            <span class="helper-text">สถานะเชื่อมต่อและ timezone ที่ระบบใช้จริง</span>
-                        </article>
-                        <article class="hero-stat-card">
-                            <span class="card-label">อัปเดตล่าสุด</span>
-                            <strong id="generated-at">-</strong>
-                            <span class="helper-text">เวลาที่ state ล่าสุดถูกสร้าง</span>
-                        </article>
-                        <article class="hero-stat-card">
-                            <span class="card-label">โฟลว์ข้อมูล</span>
-                            <div class="hero-feature-list">
-                                <span class="mini-chip">Live camera</span>
-                                <span class="mini-chip">Sensor history</span>
-                                <span class="mini-chip">Harvest prediction</span>
-                            </div>
-                            <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และดูข้อมูลที่ต้องใช้ก่อนตัดสินใจ</span>
-                        </article>
-                    </div>
-                </div>
-            </header>
-
             <main class="dashboard-grid">
+                <aside id="info-rail-section" class="panel info-rail-panel">
+                    <div class="panel-inner info-rail-inner">
+                        <div class="info-rail-copy hero-copy">
+                            <span class="eyebrow">Wolffia Dashboard</span>
+                            <h1>ภาพสด ควบคุมอุปกรณ์ และข้อมูลสำคัญในหน้าเดียว</h1>
+                            <p>
+                                หน้าเดียวสำหรับดูบ่อ เช็กค่าล่าสุด ควบคุมอุปกรณ์ และดูข้อมูลที่จำเป็นก่อนตัดสินใจ
+                            </p>
+                        </div>
+                        <div class="info-rail-summary">
+                            <article class="hero-stat-card info-rail-card">
+                                <span class="card-label">ระบบ</span>
+                                <div class="hero-stat-inline">
+                                    <span id="connection-badge" class="status-badge">กำลังเชื่อมต่อ</span>
+                                    <span id="timezone-chip" class="mini-chip">-</span>
+                                </div>
+                                <span class="helper-text">สถานะเชื่อมต่อและ timezone ที่ระบบใช้จริง</span>
+                            </article>
+                            <article class="hero-stat-card info-rail-card">
+                                <span class="card-label">อัปเดตล่าสุด</span>
+                                <strong id="generated-at">-</strong>
+                                <span class="helper-text">เวลาที่ state ล่าสุดถูกสร้าง</span>
+                            </article>
+                            <article class="hero-stat-card info-rail-card">
+                                <span class="card-label">โฟลว์ข้อมูล</span>
+                                <div class="hero-feature-list">
+                                    <span class="mini-chip">Live camera</span>
+                                    <span class="mini-chip">Sensor history</span>
+                                    <span class="mini-chip">Harvest prediction</span>
+                                </div>
+                                <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และดูข้อมูลที่ต้องใช้ก่อนตัดสินใจ</span>
+                            </article>
+                        </div>
+                    </div>
+                </aside>
+
                 <section id="camera-section" class="panel camera-panel">
                     <div class="panel-inner">
                         <div class="panel-header">
@@ -156,57 +158,18 @@ function createLayout() {
                                 class="camera-stream"
                                 alt="Live pond camera stream"
                             >
-                            <div id="camera-roi-box" class="camera-roi-box hidden" aria-hidden="true"></div>
                             <div id="camera-overlay" class="camera-overlay hidden">
                                 <p id="camera-overlay-copy">
                                     Camera paused to reduce CPU load.
                                 </p>
                             </div>
-                        </div>
-                        <div class="camera-gap-block">
-                            <div class="panel-title">
-                                <h3 class="section-heading">
-                                    ${renderIcon("stat.svg", "Timeseries Gap Fill", "section-icon")}
-                                    <span>Timeseries Gap Fill</span>
-                                </h3>
-                                <p>ตรวจหาชั่วโมงที่หายของรอบปลูกนี้ แล้วสร้าง CSV เพื่อกรอก temp/pH ย้อนหลังกลับเข้า Mongo ได้เลย</p>
-                            </div>
-                            <div id="camera-gap-summary" class="analysis-preview-note"></div>
-                            <button
-                                id="camera-gap-toggle"
-                                class="button-ghost camera-gap-toggle"
-                                type="button"
-                                aria-expanded="false"
-                                aria-controls="camera-gap-content"
-                            >
-                                แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล
-                            </button>
                             <div
-                                id="camera-gap-content"
-                                class="camera-gap-content"
+                                id="live-analysis-shell"
+                                class="live-analysis-shell"
                                 hidden
                                 style="display: none;"
                             >
-                                <div class="camera-gap-tools">
-                                    <button id="camera-gap-download-button" class="button-secondary" type="button">
-                                        Download Gap CSV
-                                    </button>
-                                    <label for="camera-gap-file-input" class="camera-gap-file-field">
-                                        Import Gap CSV
-                                        <input
-                                            id="camera-gap-file-input"
-                                            type="file"
-                                            accept=".csv,text/csv"
-                                        >
-                                    </label>
-                                    <button id="camera-gap-upload-button" class="button-primary" type="button">
-                                        Import Gap CSV
-                                    </button>
-                                </div>
-                                <div id="camera-gap-copy" class="helper-text">
-                                    ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่ขาด -> import กลับเข้า Mongo ได้ทันที
-                                </div>
-                                <div id="camera-gap-list" class="camera-gap-list"></div>
+                                <div id="live-analysis-strip" class="image-strip live-analysis-shell-grid"></div>
                             </div>
                         </div>
                         <div class="camera-analysis-block">
@@ -233,7 +196,6 @@ function createLayout() {
                                 style="display: none;"
                             >
                                 <div id="live-analysis-meta" class="analysis-preview-note"></div>
-                                <div id="live-analysis-strip" class="image-strip"></div>
                             </div>
                         </div>
                     </div>
@@ -449,8 +411,24 @@ function createLayout() {
                                         Add Light Schedule
                                     </button>
                                 </form>
+                                <button
+                                    id="light-rules-toggle"
+                                    class="button-ghost schedule-rules-toggle"
+                                    type="button"
+                                    aria-expanded="false"
+                                    aria-controls="light-rules-content"
+                                >
+                                    แสดงรายการ light schedule
+                                </button>
+                                <div
+                                    id="light-rules-content"
+                                    class="schedule-rules-content"
+                                    hidden
+                                    style="display: none;"
+                                >
+                                    <div id="light-rule-list" class="schedule-rule-grid"></div>
+                                </div>
                             </section>
-                            <div id="light-rule-list" class="schedule-rule-grid"></div>
                         </div>
                     </section>
 
@@ -526,8 +504,24 @@ function createLayout() {
                                         Add Water Pump Schedule
                                     </button>
                                 </form>
+                                <button
+                                    id="pump-water-rules-toggle"
+                                    class="button-ghost schedule-rules-toggle"
+                                    type="button"
+                                    aria-expanded="false"
+                                    aria-controls="pump-water-rules-content"
+                                >
+                                    แสดงรายการ water pump schedule
+                                </button>
+                                <div
+                                    id="pump-water-rules-content"
+                                    class="schedule-rules-content"
+                                    hidden
+                                    style="display: none;"
+                                >
+                                    <div id="pump-water-rule-list" class="schedule-rule-grid"></div>
+                                </div>
                             </section>
-                            <div id="pump-water-rule-list" class="schedule-rule-grid"></div>
                         </div>
                     </section>
                 </section>
@@ -545,6 +539,99 @@ function createLayout() {
                     </div>
                 </section>
 
+                <section id="timeseries-gap-section" class="panel timeseries-gap-panel">
+                    <div class="panel-inner">
+                        <div id="camera-gap-block" class="camera-gap-block">
+                            <div class="panel-title">
+                                <h2 class="section-heading">
+                                    ${renderIcon("stat.svg", "Timeseries Gap Fill", "section-icon")}
+                                    <span>Timeseries Gap Fill</span>
+                                </h2>
+                                <p>ตรวจชั่วโมงที่ขาดของรอบปลูก แล้วเติม temp/pH ย้อนหลังด้วย CSV จากการ์ดเดียว</p>
+                            </div>
+                            <div id="camera-gap-summary" class="analysis-preview-note"></div>
+                            <button
+                                id="camera-gap-toggle"
+                                class="button-ghost camera-gap-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="camera-gap-content"
+                            >
+                                แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล
+                            </button>
+                            <div
+                                id="camera-gap-content"
+                                class="camera-gap-content"
+                                hidden
+                                style="display: none;"
+                            >
+                                <div class="camera-gap-tools">
+                                    <button id="camera-gap-download-button" class="button-secondary" type="button">
+                                        Download Gap CSV
+                                    </button>
+                                    <label for="camera-gap-file-input" class="camera-gap-file-field">
+                                        Import Gap CSV
+                                        <input
+                                            id="camera-gap-file-input"
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                        >
+                                    </label>
+                                    <button id="camera-gap-upload-button" class="button-primary" type="button">
+                                        Import Gap CSV
+                                    </button>
+                                </div>
+                                <div id="camera-gap-copy" class="helper-text">
+                                    ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่ขาด -> import กลับเข้า Mongo ได้ทันที
+                                </div>
+                                <div id="camera-gap-list" class="camera-gap-list"></div>
+                                <section class="schedule-builder gap-import-builder">
+                                    <div class="schedule-builder-head">
+                                        <div>
+                                            <span class="card-label">Historical temp/pH</span>
+                                            <strong>Seed Cycle CSV Import</strong>
+                                        </div>
+                                        <span class="helper-text">
+                                            ใช้เมื่ออยากเติม temp/pH ย้อนหลังทั้งชุดสำหรับ seed cycle โดยไม่ต้องเปิด Advanced DB
+                                        </span>
+                                    </div>
+                                    <div class="panel-actions">
+                                        <button id="download-template-button" class="button-secondary" type="button">
+                                            ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
+                                            Download CSV Template
+                                        </button>
+                                    </div>
+                                    <div class="model-data-tools">
+                                        <label for="seed-cycle-id-input">
+                                            Seed Cycle ID
+                                            <input
+                                                id="seed-cycle-id-input"
+                                                type="text"
+                                                placeholder="seed_cycle_..."
+                                            >
+                                        </label>
+                                        <label for="seed-readings-file-input">
+                                            Import Historical temp/pH CSV
+                                            <input
+                                                id="seed-readings-file-input"
+                                                type="file"
+                                                accept=".csv,text/csv"
+                                            >
+                                        </label>
+                                        <button id="upload-template-button" class="button-secondary" type="button">
+                                            ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
+                                            Import CSV
+                                        </button>
+                                    </div>
+                                    <div id="model-data-upload-copy" class="helper-text">
+                                        ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <section id="analysis-section" class="panel analysis-hub-panel">
                     <div class="panel-inner">
                         <div class="panel-header">
@@ -556,6 +643,10 @@ function createLayout() {
                                 <p>ข้อมูลสำหรับ dataset และ workflow โมเดล ใช้เมื่อจำเป็น</p>
                             </div>
                             <div class="panel-actions">
+                                <button id="export-dataset-button" class="button-primary" type="button">
+                                    ${renderIcon("Export.svg", "Export Dataset", "button-icon")}
+                                    Export Dataset
+                                </button>
                                 <button id="analysis-refresh-button" class="button-ghost" type="button">
                                     ${renderIcon("RefreshHub.svg", "Refresh Hub", "button-icon")}
                                     Refresh Hub
@@ -581,52 +672,6 @@ function createLayout() {
                             <div id="analysis-preview-meta" class="history-metrics"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
                             <div id="analysis-footer-note" class="analysis-note"></div>
-                            <section class="schedule-builder">
-                                <div class="schedule-builder-head">
-                                    <div>
-                                        <span class="card-label">Model Data / Advanced</span>
-                                        <strong>Import Historical temp/pH</strong>
-                                    </div>
-                                    <span class="helper-text">
-                                        ใช้เฉพาะตอนต้องเติมข้อมูล temp/pH ย้อนหลังหรือ export dataset ไป train model
-                                    </span>
-                                </div>
-                                <div class="panel-actions">
-                                    <button id="export-dataset-button" class="button-primary" type="button">
-                                        ${renderIcon("Export.svg", "Export Dataset", "button-icon")}
-                                        Export Dataset
-                                    </button>
-                                    <button id="download-template-button" class="button-secondary" type="button">
-                                        ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
-                                        Download CSV Template
-                                    </button>
-                                </div>
-                                <div class="model-data-tools">
-                                    <label for="seed-cycle-id-input">
-                                        Seed Cycle ID
-                                        <input
-                                            id="seed-cycle-id-input"
-                                            type="text"
-                                            placeholder="seed_cycle_..."
-                                        >
-                                    </label>
-                                    <label for="seed-readings-file-input">
-                                        Import Historical temp/pH CSV
-                                        <input
-                                            id="seed-readings-file-input"
-                                            type="file"
-                                            accept=".csv,text/csv"
-                                        >
-                                    </label>
-                                    <button id="upload-template-button" class="button-secondary" type="button">
-                                        ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
-                                        Import CSV
-                                    </button>
-                                </div>
-                                <div id="model-data-upload-copy" class="helper-text">
-                                    ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
-                                </div>
-                            </section>
                         </div>
                     </div>
                 </section>
@@ -2589,7 +2634,14 @@ function setLiveAnalysisOpenState(open) {
     liveAnalysisOpen = open;
     const button = document.getElementById("live-analysis-toggle");
     const content = document.getElementById("live-analysis-content");
-    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
+    const shell = document.getElementById("live-analysis-shell");
+    const cameraSection = document.getElementById("camera-section");
+    if (
+        !(button instanceof HTMLButtonElement) ||
+        !(content instanceof HTMLDivElement) ||
+        !(shell instanceof HTMLDivElement) ||
+        !(cameraSection instanceof HTMLElement)
+    ) {
         return;
     }
 
@@ -2601,6 +2653,10 @@ function setLiveAnalysisOpenState(open) {
     content.hidden = !open;
     content.style.display = open ? "grid" : "none";
     content.setAttribute("aria-hidden", open ? "false" : "true");
+    shell.hidden = !open;
+    shell.style.display = open ? "grid" : "none";
+    shell.setAttribute("aria-hidden", open ? "false" : "true");
+    cameraSection.classList.toggle("live-analysis-open", open);
 }
 
 function setCameraGapOpenState(open) {
@@ -2614,6 +2670,42 @@ function setCameraGapOpenState(open) {
     button.textContent = open
         ? "ซ่อนช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล"
         : "แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.classList.toggle("open", open);
+    content.hidden = !open;
+    content.style.display = open ? "grid" : "none";
+    content.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function setLightRulesOpenState(open) {
+    lightRulesOpen = open;
+    const button = document.getElementById("light-rules-toggle");
+    const content = document.getElementById("light-rules-content");
+    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
+        return;
+    }
+
+    button.textContent = open
+        ? "ซ่อนรายการ light schedule"
+        : "แสดงรายการ light schedule";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.classList.toggle("open", open);
+    content.hidden = !open;
+    content.style.display = open ? "grid" : "none";
+    content.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function setPumpWaterRulesOpenState(open) {
+    pumpWaterRulesOpen = open;
+    const button = document.getElementById("pump-water-rules-toggle");
+    const content = document.getElementById("pump-water-rules-content");
+    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
+        return;
+    }
+
+    button.textContent = open
+        ? "ซ่อนรายการ water pump schedule"
+        : "แสดงรายการ water pump schedule";
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.classList.toggle("open", open);
     content.hidden = !open;
@@ -2794,37 +2886,7 @@ function renderCameraRoiOverlay() {
         return;
     }
 
-    const roi = liveCameraAnalysis?.coverage_roi;
-    const imageWidth = liveCameraAnalysis?.image_width || 640;
-    const imageHeight = liveCameraAnalysis?.image_height || 480;
-    if (
-        !cameraWanted ||
-        !roi ||
-        !roi.width ||
-        !roi.height ||
-        !imageWidth ||
-        !imageHeight
-    ) {
-        roiBox.classList.add("hidden");
-        return;
-    }
-
-    const leftPercent = (roi.x / imageWidth) * 100;
-    const topPercent = (roi.y / imageHeight) * 100;
-    const widthPercent = (roi.width / imageWidth) * 100;
-    const heightPercent = (roi.height / imageHeight) * 100;
-    const cornerRadius = roi.corner_radius || 0;
-    const radiusXPercent = (cornerRadius / roi.width) * 100;
-    const radiusYPercent = (cornerRadius / roi.height) * 100;
-
-    roiBox.style.left = `${leftPercent}%`;
-    roiBox.style.top = `${topPercent}%`;
-    roiBox.style.width = `${widthPercent}%`;
-    roiBox.style.height = `${heightPercent}%`;
-    roiBox.style.borderRadius = cornerRadius > 0
-        ? `${radiusXPercent}% / ${radiusYPercent}%`
-        : "0";
-    roiBox.classList.remove("hidden");
+    roiBox.classList.add("hidden");
 }
 
 function renderLiveCameraAnalysis() {
@@ -3141,6 +3203,8 @@ function bindEvents() {
     setAnalysisAdvancedOpenState(false);
     setCameraGapOpenState(false);
     setLiveAnalysisOpenState(false);
+    setLightRulesOpenState(false);
+    setPumpWaterRulesOpenState(false);
     setDatasetExportState(false);
     setDatasetImportState(false);
     setCameraGapImportState(false);
@@ -3187,6 +3251,14 @@ function bindEvents() {
 
     $("camera-gap-toggle").addEventListener("click", () => {
         setCameraGapOpenState(!cameraGapOpen);
+    });
+
+    $("light-rules-toggle").addEventListener("click", () => {
+        setLightRulesOpenState(!lightRulesOpen);
+    });
+
+    $("pump-water-rules-toggle").addEventListener("click", () => {
+        setPumpWaterRulesOpenState(!pumpWaterRulesOpen);
     });
 
     $("camera-gap-download-button").addEventListener("click", () => {
@@ -3259,6 +3331,8 @@ function bindEvents() {
         setCameraGapOpenState(false);
         setLiveAnalysisOpenState(false);
         setAnalysisAdvancedOpenState(false);
+        setLightRulesOpenState(false);
+        setPumpWaterRulesOpenState(false);
     });
 
     $("analysis-refresh-button").addEventListener("click", async () => {

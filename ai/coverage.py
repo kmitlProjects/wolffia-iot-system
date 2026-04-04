@@ -200,30 +200,7 @@ def _build_surface_mask(width: int, height: int, corner_radius: int):
 
 
 def _build_roi_preview_image(image, roi):
-    preview = cv2.addWeighted(
-        image,
-        0.42,
-        np.zeros_like(image),
-        0.58,
-        0.0,
-    )
-    x = roi["x"]
-    y = roi["y"]
-    width = roi["width"]
-    height = roi["height"]
-    preview[y : y + height, x : x + width] = image[y : y + height, x : x + width]
-    _draw_rounded_rectangle(preview, roi, (255, 210, 80), 2)
-    cv2.putText(
-        preview,
-        "Water surface ROI",
-        (16, 34),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.95,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
-    return preview
+    return image.copy()
 
 
 def _enhance_roi_for_green_detection(roi_image):
@@ -295,18 +272,6 @@ def _build_overlay_image(image, mask, roi, coverage_percent: float):
     green_highlight = np.zeros_like(overlay)
     green_highlight[:, :, 1] = mask_bgr[:, :, 0]
     overlay = cv2.addWeighted(overlay, 1.0, green_highlight, 0.45, 0.0)
-
-    _draw_rounded_rectangle(overlay, roi, (255, 210, 80), 2)
-    cv2.putText(
-        overlay,
-        f"Coverage {coverage_percent:.2f}%",
-        (16, 34),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.95,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
     return overlay
 
 
@@ -319,18 +284,6 @@ def _build_mask_preview(mask, image_shape, roi):
 
     roi_mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     preview[y : y + height, x : x + width] = roi_mask_bgr
-
-    _draw_rounded_rectangle(preview, roi, (0, 255, 255), 2)
-    cv2.putText(
-        preview,
-        "Green mask",
-        (16, 34),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.95,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
     return preview
 
 
