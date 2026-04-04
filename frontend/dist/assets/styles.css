@@ -657,6 +657,10 @@ label {
     padding: 0.9rem;
 }
 
+.status-panel .summary-card.summary-card-compact {
+    padding: 0.76rem 0.8rem;
+}
+
 .chart-card {
     display: grid;
     gap: 0.8rem;
@@ -863,6 +867,19 @@ label {
     grid-column: 1 / -1;
 }
 
+.summary-card-compact {
+    gap: 0.34rem;
+}
+
+.summary-card-compact strong {
+    font-size: clamp(1.08rem, 2.25vw, 1.3rem);
+    line-height: 1.04;
+}
+
+.summary-card-compact .helper-text {
+    line-height: 1.35;
+}
+
 .timeseries-progress-card {
     gap: 0.72rem;
     background:
@@ -887,12 +904,68 @@ label {
     gap: 0.6rem;
 }
 
+.actuator-status-card {
+    gap: 0.7rem;
+}
+
 .timeseries-capture-panel .panel-inner {
-    gap: 0;
+    gap: 0.75rem;
+    align-content: start;
 }
 
 .timeseries-capture-panel .timeseries-capture-card {
-    height: 100%;
+    height: auto;
+}
+
+.actuator-status-strip {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.42rem;
+}
+
+.actuator-status-item {
+    display: grid;
+    justify-items: center;
+    gap: 0.28rem;
+    text-align: center;
+}
+
+.actuator-status-badge {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: rgba(18, 128, 106, 0.06);
+    border: 1px solid rgba(18, 128, 106, 0.1);
+}
+
+.actuator-status-icon {
+    width: 1.08rem;
+    height: 1.08rem;
+    object-fit: contain;
+    filter: brightness(0) saturate(100%) invert(44%) sepia(8%) saturate(809%) hue-rotate(122deg) brightness(93%) contrast(86%);
+}
+
+.actuator-status-name {
+    font-size: 0.68rem;
+    line-height: 1.05;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.actuator-status-item.is-active .actuator-status-badge {
+    background: #18322e;
+    border-color: #18322e;
+    box-shadow: 0 8px 18px rgba(24, 50, 46, 0.16);
+}
+
+.actuator-status-item.is-active .actuator-status-icon {
+    filter: brightness(0) invert(1);
+}
+
+.actuator-status-item.is-active .actuator-status-name {
+    color: var(--text);
 }
 
 .timeseries-capture-actions {
@@ -1800,11 +1873,13 @@ label {
     .camera-panel {
         grid-column: 1;
         height: 100%;
+        align-self: stretch;
     }
 
     .status-panel {
         grid-column: 2;
         height: 100%;
+        align-self: stretch;
     }
 
     .control-grid {
@@ -1851,6 +1926,11 @@ label {
     .camera-panel .panel-inner,
     .status-panel .panel-inner {
         gap: 0.8rem;
+    }
+
+    .camera-panel .panel-inner {
+        height: 100%;
+        grid-template-rows: auto minmax(20rem, 1fr) auto;
     }
 
     .prediction-panel .panel-inner {
@@ -1905,7 +1985,9 @@ label {
     }
 
     .camera-shell {
-        aspect-ratio: 16 / 8.4;
+        height: 100%;
+        min-height: 20rem;
+        aspect-ratio: auto;
     }
 
     .status-panel .panel-inner {
@@ -1962,7 +2044,7 @@ label {
 
     .dashboard-grid {
         grid-template-columns: minmax(216px, 232px) minmax(0, 1.48fr) minmax(430px, 1.08fr) minmax(250px, 0.72fr);
-        align-items: start;
+        align-items: stretch;
         gap: 1rem;
     }
 
@@ -2017,10 +2099,14 @@ label {
 
     .camera-panel {
         grid-column: 2;
+        height: 100%;
+        align-self: stretch;
     }
 
     .status-panel {
         grid-column: 3;
+        height: 100%;
+        align-self: stretch;
     }
 
     .timeseries-capture-panel {
@@ -2041,7 +2127,8 @@ label {
     }
 
     .camera-shell {
-        aspect-ratio: 16 / 7.8;
+        min-height: 21.5rem;
+        aspect-ratio: auto;
     }
 
     .daily-highlight-grid {

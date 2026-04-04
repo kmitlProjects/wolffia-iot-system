@@ -241,38 +241,15 @@ function createLayout() {
                             </article>
                         </div>
                         <div class="summary-grid">
-                            <article class="summary-card">
-                                <span class="card-label">Next Timeseries Save</span>
-                                <strong id="next-sensor-save-countdown">-</strong>
-                                <span id="next-sensor-save-copy" class="helper-text">-</span>
-                            </article>
-                            <article class="summary-card">
+                            <article class="summary-card summary-card-compact">
                                 <span class="card-label">Grow Cycle</span>
                                 <strong id="grow-cycle-status-chip">-</strong>
                                 <span id="grow-cycle-copy" class="helper-text">-</span>
                             </article>
-                            <article class="summary-card summary-card-wide timeseries-progress-card">
-                                <div class="summary-card-head">
-                                    <span class="card-label">Timeseries Progress</span>
-                                    <span id="timeseries-progress-chip" class="mini-chip">-</span>
-                                </div>
-                                <strong id="timeseries-progress-title">-</strong>
-                                <span id="timeseries-progress-copy" class="helper-text">-</span>
-                                <div
-                                    id="timeseries-progress-track"
-                                    class="timeseries-progress-track"
-                                    role="progressbar"
-                                    aria-label="Timeseries collection progress for 14 days"
-                                    aria-valuemin="0"
-                                    aria-valuemax="100"
-                                    aria-valuenow="0"
-                                >
-                                    <span id="timeseries-progress-bar" class="timeseries-progress-bar"></span>
-                                </div>
-                                <div class="timeseries-progress-meta">
-                                    <span id="timeseries-progress-detail">-</span>
-                                    <span>เต็มเมื่อครบ 14 วัน</span>
-                                </div>
+                            <article class="summary-card summary-card-compact">
+                                <span class="card-label">Next Timeseries Save</span>
+                                <strong id="next-sensor-save-countdown">-</strong>
+                                <span id="next-sensor-save-copy" class="helper-text">-</span>
                             </article>
                         </div>
                         <div class="actions">
@@ -288,6 +265,36 @@ function createLayout() {
 
                 <aside id="timeseries-capture-section" class="panel timeseries-capture-panel">
                     <div class="panel-inner">
+                        <article class="summary-card timeseries-progress-card">
+                            <div class="summary-card-head">
+                                <span class="card-label">Timeseries Progress</span>
+                                <span id="timeseries-progress-chip" class="mini-chip">-</span>
+                            </div>
+                            <strong id="timeseries-progress-title">-</strong>
+                            <span id="timeseries-progress-copy" class="helper-text">-</span>
+                            <div
+                                id="timeseries-progress-track"
+                                class="timeseries-progress-track"
+                                role="progressbar"
+                                aria-label="Timeseries collection progress for 14 days"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow="0"
+                            >
+                                <span id="timeseries-progress-bar" class="timeseries-progress-bar"></span>
+                            </div>
+                            <div class="timeseries-progress-meta">
+                                <span id="timeseries-progress-detail">-</span>
+                                <span>เต็มเมื่อครบ 14 วัน</span>
+                            </div>
+                        </article>
+                        <article class="summary-card actuator-status-card">
+                            <div class="summary-card-head">
+                                <span class="card-label">Actuator Status</span>
+                            </div>
+                            <div id="timeseries-actuator-status-strip" class="actuator-status-strip" aria-label="สถานะอุปกรณ์ปัจจุบัน"></div>
+                            <span class="helper-text">สถานะสดของไฟ ปั๊มหลัก และปั๊มปุ๋ย 1-3</span>
+                        </article>
                         <article class="summary-card timeseries-capture-card">
                             <div class="summary-card-head">
                                 <span class="card-label">Timeseries Snap</span>
@@ -3149,6 +3156,7 @@ function renderLiveSnapshot(state) {
         ? "อ้างอิงค่า temp / pH ล่าสุดในระบบ"
         : "ยังไม่มีข้อมูล temp / pH ล่าสุด";
     renderTimeseriesCapturePolicy(state);
+    renderTimeseriesActuatorStatus(state);
     renderNextSensorSaveCountdown(state);
     renderTimeseriesProgressSummary(state);
 
@@ -3201,6 +3209,65 @@ function renderTimeseriesCapturePolicy(state) {
     forceOffButton.textContent = timeseriesCapturePolicyPending && mode !== "force_light_off"
         ? "กำลังบันทึก..."
         : "ปิดไฟก่อนถ่าย";
+}
+
+function renderTimeseriesActuatorStatus(state) {
+    const container = document.getElementById("timeseries-actuator-status-strip");
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const fertilizerStatusById = new Map(
+        (state.actuators.pump_fertilizer.pumps ?? []).map((pump) => [pump.id, pump.is_running]),
+    );
+    const items = [
+        {
+            key: "light",
+            label: "ไฟ",
+            icon: "LightRelay.svg",
+            isActive: state.actuators.light.is_on,
+            stateLabel: state.actuators.light.is_on ? "ON" : "OFF",
+        },
+        {
+            key: "water-main",
+            label: "หลัก",
+            icon: "waterPump.svg",
+            isActive: state.actuators.pump_water.is_running,
+            stateLabel: state.actuators.pump_water.is_running ? "RUN" : "IDLE",
+        },
+        ...[1, 2, 3].map((pumpId) => {
+            const isActive = Boolean(fertilizerStatusById.get(pumpId));
+            return {
+                key: `fert-${pumpId}`,
+                label: `P${pumpId}`,
+                icon: "FertilizerPumps.svg",
+                isActive,
+                stateLabel: isActive ? "RUN" : "IDLE",
+            };
+        }),
+    ];
+
+    container.innerHTML = items
+        .map(
+            (item) => `
+                <div
+                    class="actuator-status-item ${item.isActive ? "is-active" : "is-idle"}"
+                    title="${escapeHtml(`${item.label}: ${item.stateLabel}`)}"
+                    aria-label="${escapeHtml(`${item.label}: ${item.stateLabel}`)}"
+                >
+                    <span class="actuator-status-badge">
+                        <img
+                            src="/assets/icon/${item.icon}"
+                            class="actuator-status-icon"
+                            alt=""
+                            aria-hidden="true"
+                        >
+                    </span>
+                    <span class="actuator-status-name">${escapeHtml(item.label)}</span>
+                </div>
+            `,
+        )
+        .join("");
 }
 
 function renderDashboard(state) {
