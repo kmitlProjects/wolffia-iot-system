@@ -73,6 +73,14 @@ export function fetchLiveCameraAnalysis(force = false) {
     return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`);
 }
 
+export function fetchAnomalyWatchStatus() {
+    return requestJson("/anomaly-watch/status");
+}
+
+export function fetchAnomalyAlerts(limit = 5) {
+    return requestJson(`/anomaly-alerts?limit=${limit}`);
+}
+
 export function downloadModelDataTemplate() {
     return requestDownload(
         "/model-data/template/download",

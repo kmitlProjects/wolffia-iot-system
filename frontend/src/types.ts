@@ -223,6 +223,53 @@ export interface AutomationState {
     pump_water: PumpWaterRule[]
 }
 
+export interface AnomalyWatchStatus {
+    enabled?: boolean | null
+    running?: boolean | null
+    webhook_configured?: boolean | null
+    webhook_kind?: string | null
+    poll_seconds?: number | null
+    min_area_percent?: number | null
+    persist_frames?: number | null
+    cooldown_seconds?: number | null
+    diff_threshold?: number | null
+    baseline_ready_light_on?: boolean | null
+    baseline_ready_light_off?: boolean | null
+    active_candidate_light_on?: boolean | null
+    active_candidate_light_off?: boolean | null
+    consecutive_hits_light_on?: number | null
+    consecutive_hits_light_off?: number | null
+    recent_alerts_24h?: number | null
+    last_checked_at?: string | null
+    last_frame_captured_at?: string | null
+    last_error?: string | null
+    last_alert_at?: string | null
+    last_alert_area_percent?: number | null
+    last_changed_area_percent?: number | null
+    last_coverage_percent?: number | null
+    last_light_state?: string | null
+    last_webhook_ok?: boolean | null
+    last_webhook_message?: string | null
+}
+
+export interface AnomalyAlert {
+    _id: string
+    event?: string | null
+    detected_at?: string | null
+    summary_text?: string | null
+    light_is_on?: boolean | null
+    green_coverage_percent?: number | null
+    coverage_delta_percent?: number | null
+    changed_area_percent?: number | null
+    largest_blob_percent?: number | null
+    raw_url?: string | null
+    overlay_url?: string | null
+    diff_url?: string | null
+    webhook_delivered?: boolean | null
+    webhook_response_status?: number | null
+    webhook_error?: string | null
+}
+
 export interface DashboardState {
     meta: {
         generated_at: string
@@ -246,6 +293,12 @@ export interface DashboardState {
         last_14d_rows?: number | null
     }
     prediction_latest?: unknown
+    anomaly_watch?: {
+        status?: AnomalyWatchStatus | null
+        latest_alert?: AnomalyAlert | null
+        latest_preview_url?: string | null
+        latest_preview_token?: string | null
+    } | null
     model_data?: {
         latest_seed_cycle_id?: string | null
         sensor_interval_seconds?: number | null

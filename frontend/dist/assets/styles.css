@@ -904,6 +904,51 @@ label {
     gap: 0.6rem;
 }
 
+.anomaly-watch-card {
+    gap: 0.62rem;
+}
+
+.anomaly-watch-preview {
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 1px solid rgba(18, 128, 106, 0.12);
+    background: rgba(241, 245, 240, 0.88);
+}
+
+.anomaly-watch-preview-image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+}
+
+.anomaly-log-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.anomaly-log-item {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.72rem 0.82rem;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(18, 128, 106, 0.1);
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.anomaly-log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.anomaly-log-item strong {
+    font-size: 0.92rem;
+    line-height: 1.4;
+}
+
 .timeseries-capture-last-copy {
     padding-top: 0.08rem;
     border-top: 1px dashed rgba(18, 128, 106, 0.12);

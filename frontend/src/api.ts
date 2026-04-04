@@ -1,4 +1,6 @@
 import type {
+    AnomalyAlert,
+    AnomalyWatchStatus,
     DailySummary,
     DashboardState,
     HarvestPredictionPreviewResponse,
@@ -96,6 +98,21 @@ export function fetchLiveCameraAnalysis(
     force = false,
 ): Promise<{ analysis: LiveCameraAnalysis }> {
     return requestJson(`/camera/analysis-preview?force=${force ? "true" : "false"}`)
+}
+
+export function fetchAnomalyWatchStatus(): Promise<{
+    watcher: AnomalyWatchStatus
+    latest_alert?: AnomalyAlert | null
+    latest_preview_url?: string | null
+    latest_preview_token?: string | null
+}> {
+    return requestJson("/anomaly-watch/status")
+}
+
+export function fetchAnomalyAlerts(limit = 5): Promise<{
+    items: AnomalyAlert[]
+}> {
+    return requestJson(`/anomaly-alerts?limit=${limit}`)
 }
 
 export function downloadModelDataTemplate(): Promise<{

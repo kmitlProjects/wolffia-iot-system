@@ -4,6 +4,8 @@ import {
     deleteAutomationRule,
     downloadModelDataTemplate,
     exportTrainingDataset,
+    fetchAnomalyAlerts,
+    fetchAnomalyWatchStatus,
     fetchDailySummaryHistory,
     fetchDashboardState,
     fetchLiveCameraAnalysis,
@@ -20,7 +22,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260404ar";
+} from "./api.js?v=20260404be";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -35,6 +37,7 @@ const EVERYDAY_VALUES = DAY_OPTIONS.map(([value]) => value);
 
 const POLL_VISIBLE_MS = 30000;
 const POLL_HIDDEN_MS = 30000;
+const ANOMALY_POLL_MS = 5000;
 const CAMERA_REFRESH_MS = 2500;
 const CAMERA_RETRY_MS = 3000;
 const LIVE_ANALYSIS_REFRESH_MS = 8000;
@@ -47,6 +50,7 @@ let dashboardState = null;
 let sensorHistory = [];
 let dailySummaryHistory = [];
 let pollTimer;
+let anomalyPollTimer;
 let messageTimer;
 let cameraRetryTimer;
 let liveAnalysisTimer;
@@ -65,6 +69,11 @@ let predictionPreview = null;
 let timeseriesCapturePolicyPending = false;
 let liveCameraAnalysisPending = false;
 let liveCameraAnalysis = null;
+let anomalyWatchState = null;
+let anomalyAlerts = [];
+let anomalyPollPending = false;
+let lastSeenAnomalyAlertId = null;
+let anomalyAlertPrimed = false;
 let analysisAdvancedOpen = false;
 let cameraGapOpen = false;
 let liveAnalysisOpen = false;
@@ -320,6 +329,19 @@ function createLayout() {
                             </div>
                             <span id="timeseries-capture-copy" class="helper-text">-</span>
                             <span id="timeseries-capture-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
+                        </article>
+                        <article class="summary-card anomaly-watch-card">
+                            <div class="summary-card-head">
+                                <span class="card-label">Anomaly Watch</span>
+                                <span id="anomaly-watch-chip" class="mini-chip">-</span>
+                            </div>
+                            <strong id="anomaly-watch-title">-</strong>
+                            <span id="anomaly-watch-copy" class="helper-text">-</span>
+                            <span id="anomaly-watch-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
+                            <div id="anomaly-watch-preview-wrap" class="anomaly-watch-preview hidden">
+                                <img id="anomaly-watch-preview" class="anomaly-watch-preview-image" alt="ภาพแจ้งเตือนล่าสุด">
+                            </div>
+                            <div id="anomaly-log-list" class="anomaly-log-list"></div>
                         </article>
                     </div>
                 </aside>
@@ -3375,6 +3397,183 @@ function renderTimeseriesActuatorStatus(state) {
         .join("");
 }
 
+function renderAnomalyWatch(state) {
+    const chip = document.getElementById("anomaly-watch-chip");
+    const title = document.getElementById("anomaly-watch-title");
+    const copy = document.getElementById("anomaly-watch-copy");
+    const lastCopy = document.getElementById("anomaly-watch-last-copy");
+    const previewWrap = document.getElementById("anomaly-watch-preview-wrap");
+    const previewImage = document.getElementById("anomaly-watch-preview");
+    const logList = document.getElementById("anomaly-log-list");
+    if (!(chip instanceof HTMLElement) || !(title instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(lastCopy instanceof HTMLElement) || !(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement) || !(logList instanceof HTMLElement)) {
+        return;
+    }
+
+    const anomalyState = anomalyWatchState ?? state.anomaly_watch ?? null;
+    const status = anomalyState?.status ?? null;
+    const latestAlert = anomalyAlerts[0] ?? anomalyState?.latest_alert ?? null;
+    if (!status) {
+        chip.textContent = "-";
+        chip.className = "mini-chip";
+        title.textContent = "ยังไม่มี anomaly watcher";
+        copy.textContent = "backend ยังไม่ส่งสถานะ watcher มา";
+        lastCopy.textContent = "-";
+        previewWrap.classList.add("hidden");
+        previewImage.removeAttribute("src");
+        logList.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี anomaly log</div>`;
+        return;
+    }
+
+    const enabled = Boolean(status.enabled);
+    const running = Boolean(status.running);
+    const webhookConfigured = Boolean(status.webhook_configured);
+    const recentAlerts = Number(status.recent_alerts_24h ?? 0);
+    const pollSeconds = Number(status.poll_seconds ?? 0);
+    const minAreaPercent = Number(status.min_area_percent ?? 0);
+    const hasError = Boolean(status.last_error);
+    const latestPreviewUrl = anomalyState?.latest_preview_url ?? null;
+    const latestPreviewToken = anomalyState?.latest_preview_token ?? latestAlert?._id ?? latestAlert?.detected_at ?? "";
+
+    if (hasError) {
+        chip.textContent = "มีปัญหา";
+        chip.className = "mini-chip danger";
+        title.textContent = "Anomaly watcher มีข้อผิดพลาด";
+    } else if (!enabled) {
+        chip.textContent = "ปิดอยู่";
+        chip.className = "mini-chip warning";
+        title.textContent = "หยุดเฝ้าดูสิ่งแปลกปลอมชั่วคราว";
+    } else if (running) {
+        chip.textContent = webhookConfigured ? "Webhook พร้อม" : "เก็บ local";
+        chip.className = "mini-chip active";
+        title.textContent = recentAlerts > 0
+            ? `พบ alert ใน 24 ชม. ล่าสุด ${formatNumber(recentAlerts, 0)} ครั้ง`
+            : "กำลังเฝ้าดูภาพสดอยู่";
+    } else {
+        chip.textContent = "ไม่ทำงาน";
+        chip.className = "mini-chip danger";
+        title.textContent = "Anomaly watcher ยังไม่เริ่มทำงาน";
+    }
+
+    copy.textContent = [
+        pollSeconds > 0 ? `ตรวจทุก ${formatNumber(pollSeconds, 0)} วินาที` : null,
+        minAreaPercent > 0 ? `แจ้งเมื่อ blob เกิน ${formatNumber(minAreaPercent, 1)}%` : null,
+        webhookConfigured ? "มี webhook แล้ว" : "เก็บเฉพาะ text log",
+        "ไม่บันทึกไฟล์ภาพลงระบบ",
+    ].filter(Boolean).join(" • ");
+
+    if (latestPreviewUrl && latestAlert?.detected_at) {
+        previewWrap.classList.remove("hidden");
+        const cacheToken = encodeURIComponent(String(latestPreviewToken));
+        previewImage.src = `${latestPreviewUrl}?t=${cacheToken}`;
+    } else {
+        previewWrap.classList.add("hidden");
+        previewImage.removeAttribute("src");
+    }
+
+    if (hasError) {
+        lastCopy.textContent = String(status.last_error || "-");
+    } else if (latestAlert?.detected_at) {
+        const blobPercent = latestAlert.largest_blob_percent;
+        lastCopy.textContent = [
+            `ล่าสุด ${formatTimestamp(latestAlert.detected_at)}`,
+            blobPercent !== null && blobPercent !== undefined
+                ? `blob ${formatNumber(blobPercent, 2)}%`
+                : null,
+            latestAlert.summary_text || "บันทึกเป็น text log แล้ว",
+        ].filter(Boolean).join(" • ");
+    } else if (status.last_checked_at) {
+        lastCopy.textContent = `เช็กล่าสุด ${formatTimestamp(status.last_checked_at)} • ยังไม่พบ alert`;
+    } else {
+        lastCopy.textContent = "กำลังรอ baseline รอบแรกจากกล้อง";
+    }
+
+    renderAnomalyLog(logList, anomalyAlerts);
+}
+
+function renderAnomalyLog(container, alerts) {
+    if (alerts.length === 0) {
+        container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มี anomaly log</div>`;
+        return;
+    }
+
+    container.innerHTML = alerts
+        .slice(0, 5)
+        .map((alert) => {
+            const severity = Number(alert.largest_blob_percent ?? 0) >= 5 ? "danger" : "warning";
+            const summary = alert.summary_text || "ตรวจพบสิ่งแปลกปลอม";
+            return `
+                <article class="anomaly-log-item">
+                    <div class="anomaly-log-head">
+                        <span class="mini-chip ${severity}">
+                            ${escapeHtml(`blob ${formatNumber(alert.largest_blob_percent, 2)}%`)}
+                        </span>
+                        <span class="helper-text">${escapeHtml(formatTimestamp(alert.detected_at))}</span>
+                    </div>
+                    <strong>${escapeHtml(summary)}</strong>
+                </article>
+            `;
+        })
+        .join("");
+}
+
+function queueAnomalyRefresh(delayMs = ANOMALY_POLL_MS) {
+    if (document.hidden) {
+        if (anomalyPollTimer !== undefined) {
+            window.clearTimeout(anomalyPollTimer);
+        }
+        return;
+    }
+
+    if (anomalyPollTimer !== undefined) {
+        window.clearTimeout(anomalyPollTimer);
+    }
+    anomalyPollTimer = window.setTimeout(() => {
+        void refreshAnomalyWatchFast();
+    }, delayMs);
+}
+
+async function refreshAnomalyWatchFast() {
+    if (anomalyPollPending) {
+        return;
+    }
+
+    anomalyPollPending = true;
+    try {
+        const [statusResponse, alertsResponse] = await Promise.all([
+            fetchAnomalyWatchStatus(),
+            fetchAnomalyAlerts(5),
+        ]);
+        anomalyWatchState = {
+            status: statusResponse.watcher,
+            latest_alert: statusResponse.latest_alert ?? alertsResponse.items[0] ?? null,
+            latest_preview_url: statusResponse.latest_preview_url ?? null,
+            latest_preview_token: statusResponse.latest_preview_token ?? null,
+        };
+        anomalyAlerts = alertsResponse.items;
+
+        const newestAlertId = alertsResponse.items[0]?._id ?? null;
+        if (!anomalyAlertPrimed) {
+            lastSeenAnomalyAlertId = newestAlertId;
+            anomalyAlertPrimed = true;
+        } else if (newestAlertId && newestAlertId !== lastSeenAnomalyAlertId) {
+            lastSeenAnomalyAlertId = newestAlertId;
+            setMessage(
+                alertsResponse.items[0]?.summary_text || "ตรวจพบสิ่งแปลกปลอมในบ่อ",
+                "error",
+            );
+        }
+
+        if (dashboardState) {
+            renderAnomalyWatch(dashboardState);
+        }
+    } catch {
+        // keep the last rendered anomaly state
+    } finally {
+        anomalyPollPending = false;
+        queueAnomalyRefresh(ANOMALY_POLL_MS);
+    }
+}
+
 function renderDashboard(state) {
     const fertilizer = state.actuators.pump_fertilizer;
 
@@ -3412,6 +3611,7 @@ function renderDashboard(state) {
     renderPredictionPreview(state);
     setPredictionPreviewState(predictionPreviewPending);
     renderLiveCameraAnalysis();
+    renderAnomalyWatch(state);
     if (!cameraLoaded && state.camera.status.last_error) {
         $("camera-overlay").classList.remove("hidden");
         $("camera-overlay-copy").textContent = state.camera.status.last_error;
@@ -3441,6 +3641,14 @@ async function refreshDashboard(silent = false) {
         dashboardState = state;
         sensorHistory = sensorHistoryResponse.items;
         dailySummaryHistory = dailySummaryResponse.items;
+        anomalyWatchState = state.anomaly_watch ?? null;
+        if (!anomalyAlertPrimed) {
+            lastSeenAnomalyAlertId = state.anomaly_watch?.latest_alert?._id ?? null;
+            anomalyAlertPrimed = true;
+        }
+        anomalyAlerts = state.anomaly_watch?.latest_alert
+            ? [state.anomaly_watch.latest_alert]
+            : [];
         renderDashboard(state);
         setConnectionStatus(true, document.hidden ? "พักการ sync บางส่วน" : "Live sync");
     } catch (error) {
@@ -4013,11 +4221,13 @@ function bindEvents() {
         syncCamera();
         if (!document.hidden) {
             void refreshLiveCameraAnalysis(true);
+            void refreshAnomalyWatchFast();
         } else {
             clearLiveAnalysisTimer();
         }
         renderNextSensorSaveCountdown();
         queueRefresh();
+        queueAnomalyRefresh();
     });
 }
 
@@ -4037,11 +4247,13 @@ async function bootstrap() {
     syncCamera();
     void refreshLiveCameraAnalysis(true);
     await refreshDashboard();
+    void refreshAnomalyWatchFast();
     renderNextSensorSaveCountdown();
     setAnalysisAdvancedOpenState(false);
     setCameraGapOpenState(false);
     setLiveAnalysisOpenState(false);
     queueRefresh();
+    queueAnomalyRefresh();
 }
 
 void bootstrap();

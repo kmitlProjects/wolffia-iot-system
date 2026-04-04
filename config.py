@@ -96,6 +96,7 @@ IMAGE_ANALYSIS_REQUEST_TIMEOUT_SECONDS = max(
 
 CAMERA_DEVICE = os.getenv("CAMERA_DEVICE", "/dev/video0")
 IMAGE_OUTPUT_DIR = os.getenv("IMAGE_OUTPUT_DIR", str(BASE_DIR / "data" / "images"))
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
 IMAGE_ANALYSIS_SOURCE_MODE = os.getenv(
     "IMAGE_ANALYSIS_SOURCE_MODE",
     "dataset",
@@ -154,6 +155,27 @@ FERTILIZER_DOSE_ML_PER_10L = max(
 )
 AUTOMATION_COLLECTION = os.getenv("AUTOMATION_COLLECTION", "automation_rules")
 AUTOMATION_POLL_SECONDS = get_int_env("AUTOMATION_POLL_SECONDS", 5)
+ANOMALY_ALERT_COLLECTION = os.getenv(
+    "ANOMALY_ALERT_COLLECTION",
+    "anomaly_alerts",
+)
+ANOMALY_WATCH_ENABLED = get_bool_env("ANOMALY_WATCH_ENABLED", True)
+ANOMALY_WEBHOOK_URL = os.getenv("ANOMALY_WEBHOOK_URL", "").strip()
+ANOMALY_POLL_SECONDS = max(get_int_env("ANOMALY_POLL_SECONDS", 5), 2)
+ANOMALY_MIN_AREA_PERCENT = max(
+    get_float_env("ANOMALY_MIN_AREA_PERCENT", 2.5),
+    0.1,
+)
+ANOMALY_PERSIST_FRAMES = max(get_int_env("ANOMALY_PERSIST_FRAMES", 1), 1)
+ANOMALY_COOLDOWN_SECONDS = max(
+    get_int_env("ANOMALY_COOLDOWN_SECONDS", 300),
+    0,
+)
+ANOMALY_DIFF_THRESHOLD = max(get_int_env("ANOMALY_DIFF_THRESHOLD", 28), 1)
+ANOMALY_OUTPUT_DIR = os.getenv(
+    "ANOMALY_OUTPUT_DIR",
+    str(BASE_DIR / "data" / "anomaly_alerts"),
+)
 APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Bangkok")
 DEFAULT_GROW_CYCLE_DAYS = max(get_int_env("DEFAULT_GROW_CYCLE_DAYS", 14), 1)
 PREDICTION_LOOKBACK_DAYS = max(get_int_env("PREDICTION_LOOKBACK_DAYS", 7), 1)

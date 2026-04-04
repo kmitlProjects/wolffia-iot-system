@@ -287,7 +287,7 @@ def _build_mask_preview(mask, image_shape, roi):
     return preview
 
 
-def analyze_green_coverage_image(image):
+def extract_surface_roi(image):
     roi = _get_roi_bounds(image)
     x = roi["x"]
     y = roi["y"]
@@ -295,8 +295,18 @@ def analyze_green_coverage_image(image):
     height = roi["height"]
     corner_radius = roi.get("corner_radius") or 0
 
-    surface_mask = _build_surface_mask(width, height, corner_radius)
-    roi_image = image[y : y + height, x : x + width]
+    return {
+        "roi": roi,
+        "roi_image": image[y : y + height, x : x + width],
+        "surface_mask": _build_surface_mask(width, height, corner_radius),
+    }
+
+
+def analyze_green_coverage_image(image):
+    surface_context = extract_surface_roi(image)
+    roi = surface_context["roi"]
+    roi_image = surface_context["roi_image"]
+    surface_mask = surface_context["surface_mask"]
     mask, thresholds = _build_green_mask(roi_image, surface_mask)
     mask = cv2.bitwise_and(mask, surface_mask)
 

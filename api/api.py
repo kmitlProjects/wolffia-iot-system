@@ -26,6 +26,7 @@ from ai.predictions import (
     list_prediction_runs,
     store_prediction_run,
 )
+from automation.anomaly_watch import AnomalyWatcher
 from automation.daily_capture import DailyImageScheduler
 from automation.scheduler import AutomationScheduler
 from fastapi import FastAPI, HTTPException, Request
@@ -54,6 +55,15 @@ from actuators.pump_water_control import (
     stop_pump_water,
 )
 from config import (
+    ANOMALY_ALERT_COLLECTION,
+    ANOMALY_COOLDOWN_SECONDS,
+    ANOMALY_DIFF_THRESHOLD,
+    ANOMALY_MIN_AREA_PERCENT,
+    ANOMALY_OUTPUT_DIR,
+    ANOMALY_PERSIST_FRAMES,
+    ANOMALY_POLL_SECONDS,
+    ANOMALY_WATCH_ENABLED,
+    ANOMALY_WEBHOOK_URL,
     APP_TIMEZONE,
     AUTOMATION_COLLECTION,
     AUTOMATION_POLL_SECONDS,
@@ -83,6 +93,7 @@ from config import (
     PREDICTION_COLLECTION,
     PREDICTION_LOOKBACK_DAYS,
     PREDICTION_SENSOR_LIMIT,
+    PUBLIC_BASE_URL,
     SENSOR_INTERVAL_SECONDS,
     SNAPSHOT_POLL_SECONDS,
     SNAPSHOT_TIME,
@@ -133,6 +144,7 @@ daily_summary_collection = db[DAILY_SUMMARY_COLLECTION]
 grow_cycle_collection = db[GROW_CYCLE_COLLECTION]
 prediction_collection = db[PREDICTION_COLLECTION]
 automation_collection = db[AUTOMATION_COLLECTION]
+anomaly_alert_collection = db[ANOMALY_ALERT_COLLECTION]
 ensure_daily_summary_indexes(daily_summary_collection)
 ensure_grow_cycle_indexes(grow_cycle_collection)
 ensure_prediction_indexes(prediction_collection)
@@ -157,6 +169,20 @@ daily_image_scheduler = DailyImageScheduler(
     IMAGE_ANALYSIS_ARCHIVE_ENABLED,
     IMAGE_ANALYSIS_FORCE_LIGHT_OFF,
     IMAGE_ANALYSIS_LIGHT_SETTLE_SECONDS,
+)
+anomaly_watcher = AnomalyWatcher(
+    anomaly_alert_collection,
+    APP_TIMEZONE,
+    ANOMALY_POLL_SECONDS,
+    ANOMALY_OUTPUT_DIR,
+    DATA_DIR,
+    PUBLIC_BASE_URL,
+    ANOMALY_WATCH_ENABLED,
+    ANOMALY_WEBHOOK_URL,
+    ANOMALY_MIN_AREA_PERCENT,
+    ANOMALY_PERSIST_FRAMES,
+    ANOMALY_COOLDOWN_SECONDS,
+    ANOMALY_DIFF_THRESHOLD,
 )
 _live_camera_analysis_lock = threading.RLock()
 _live_camera_analysis_preview = None
@@ -219,6 +245,16 @@ class TimeseriesCapturePolicyRequest(BaseModel):
     light_settle_seconds: float | None = None
 
 
+class AnomalyWatchConfigRequest(BaseModel):
+    enabled: bool | None = None
+    webhook_url: str | None = None
+    min_area_percent: float | None = None
+    persist_frames: int | None = None
+    cooldown_seconds: int | None = None
+    poll_seconds: int | None = None
+    diff_threshold: int | None = None
+
+
 class ModelDataImportRequest(BaseModel):
     cycle_id: str
     csv_text: str
@@ -239,6 +275,23 @@ def serialize_document(document):
 
     serialized = dict(document)
     serialized["_id"] = str(serialized["_id"])
+    return serialized
+
+
+def serialize_anomaly_alert(document):
+    serialized = serialize_document(document)
+    if serialized is None:
+        return None
+
+    for key in (
+        "raw_path",
+        "overlay_path",
+        "diff_path",
+        "raw_url",
+        "overlay_url",
+        "diff_url",
+    ):
+        serialized.pop(key, None)
     return serialized
 
 
@@ -457,6 +510,26 @@ def get_grouped_automation_rules():
     return grouped
 
 
+def get_latest_anomaly_alert():
+    return serialize_anomaly_alert(anomaly_watcher.get_latest_alert())
+
+
+def get_anomaly_alert_history(limit: int = 20):
+    return [serialize_anomaly_alert(item) for item in anomaly_watcher.list_alerts(limit)]
+
+
+def build_anomaly_watch_state():
+    latest_alert = get_latest_anomaly_alert()
+    preview_token = anomaly_watcher.get_latest_preview_token()
+    preview_url = "/anomaly-watch/latest-preview" if preview_token else None
+    return {
+        "status": anomaly_watcher.get_status(),
+        "latest_alert": latest_alert,
+        "latest_preview_url": preview_url,
+        "latest_preview_token": preview_token,
+    }
+
+
 def _coerce_optional_float(value):
     raw = str(value or "").strip()
     if raw == "":
@@ -584,6 +657,7 @@ def get_dashboard_state():
         "grow_cycle": serialize_document(get_active_grow_cycle()),
         "timeseries": get_timeseries_stats(),
         "prediction_latest": serialize_document(get_latest_prediction_document()),
+        "anomaly_watch": build_anomaly_watch_state(),
         "model_data": {
             "latest_seed_cycle_id": (
                 get_latest_seed_cycle_document() or {}
@@ -697,8 +771,13 @@ def startup_event():
     print("raw/mask/overlay preview ล่าสุดเปิดดูได้ผ่าน /image-analysis/debug/latest/*")
     print("actuator controls พร้อมใช้งานที่ /actuators/*")
     print("automation schedule พร้อมใช้งานที่ /automation/*")
+    print(
+        "anomaly watcher พร้อมใช้งานที่ /anomaly-watch/* "
+        f"(enabled={ANOMALY_WATCH_ENABLED})"
+    )
     automation_scheduler.start()
     daily_image_scheduler.start()
+    anomaly_watcher.start()
     summarize_day(
         collection,
         image_analysis_collection,
@@ -712,6 +791,7 @@ def startup_event():
 def shutdown_event():
     automation_scheduler.stop()
     daily_image_scheduler.stop()
+    anomaly_watcher.stop()
 
 # ----------------- API Endpoints -----------------
 
@@ -844,6 +924,61 @@ def update_timeseries_capture_policy(payload: TimeseriesCapturePolicyRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"capture_policy": policy}
+
+
+@app.get("/anomaly-watch/status")
+def anomaly_watch_status():
+    snapshot = build_anomaly_watch_state()
+    return {
+        "watcher": snapshot["status"],
+        "latest_alert": snapshot["latest_alert"],
+        "latest_preview_url": snapshot["latest_preview_url"],
+        "latest_preview_token": snapshot["latest_preview_token"],
+    }
+
+
+@app.patch("/anomaly-watch/config")
+def update_anomaly_watch_config(payload: AnomalyWatchConfigRequest):
+    try:
+        status = anomaly_watcher.set_config(
+            enabled=payload.enabled,
+            webhook_url=payload.webhook_url,
+            min_area_percent=payload.min_area_percent,
+            persist_frames=payload.persist_frames,
+            cooldown_seconds=payload.cooldown_seconds,
+            poll_seconds=payload.poll_seconds,
+            diff_threshold=payload.diff_threshold,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"watcher": status}
+
+
+@app.post("/anomaly-watch/reset-baseline")
+def reset_anomaly_watch_baseline():
+    return {"watcher": anomaly_watcher.reset_baselines()}
+
+
+@app.get("/anomaly-alerts")
+def anomaly_alerts(limit: int = 20):
+    return {"items": get_anomaly_alert_history(limit)}
+
+
+@app.get("/anomaly-watch/latest-preview")
+def anomaly_watch_latest_preview():
+    asset = anomaly_watcher.get_latest_preview_asset()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="anomaly preview not found")
+
+    return Response(
+        content=asset["bytes"],
+        media_type=asset["content_type"],
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/model-data/template/download")
