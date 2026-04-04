@@ -43,7 +43,7 @@ class AnomalyWatcher:
         self.persist_frames = max(int(persist_frames), 1)
         self.cooldown_seconds = max(int(cooldown_seconds), 0)
         self.diff_threshold = max(int(diff_threshold), 1)
-        self._baseline_alpha = 0.08
+        self._baseline_alpha = 0.05
         self._stop_event = threading.Event()
         self._thread = None
         self._lock = threading.RLock()
@@ -321,11 +321,25 @@ class AnomalyWatcher:
         with self._lock:
             self._runtime["last_changed_area_percent"] = changed_area_percent
 
-        candidate_detected = largest_blob_percent >= self.min_area_percent
+        changed_area_threshold = max(self.min_area_percent + 1.0, self.min_area_percent * 1.8)
+        baseline_hold_threshold = max(0.8, self.min_area_percent * 0.45)
+        candidate_detected = (
+            largest_blob_percent >= self.min_area_percent
+            or changed_area_percent >= changed_area_threshold
+        )
         if not candidate_detected:
             light_state["consecutive_hits"] = 0
             light_state["alert_active"] = False
-            self._update_baseline(light_state, gray, analysis["green_coverage_percent"], surface_mask)
+            if (
+                changed_area_percent < baseline_hold_threshold
+                and coverage_delta_percent < 1.0
+            ):
+                self._update_baseline(
+                    light_state,
+                    gray,
+                    analysis["green_coverage_percent"],
+                    surface_mask,
+                )
             return
 
         light_state["consecutive_hits"] += 1

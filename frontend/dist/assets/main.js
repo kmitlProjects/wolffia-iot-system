@@ -22,7 +22,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260404bf";
+} from "./api.js?v=20260404bg";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -75,7 +75,6 @@ let anomalyPollPending = false;
 let lastSeenAnomalyAlertId = null;
 let anomalyAlertPrimed = false;
 let analysisAdvancedOpen = false;
-let cameraGapOpen = false;
 let liveAnalysisOpen = false;
 let lightScheduleOpen = false;
 let pumpWaterScheduleOpen = false;
@@ -336,7 +335,7 @@ function createLayout() {
                                 <div class="anomaly-watch-head-tools">
                                     <button id="anomaly-db-refresh-button" class="anomaly-watch-db-button" type="button">
                                         ${renderIcon("db.svg", "โหลดข้อความล่าสุดจาก DB", "anomaly-watch-db-icon")}
-                                        <span>โหลด DB ล่าสุด</span>
+                                        <span>DB ล่าสุด</span>
                                     </button>
                                     <span id="anomaly-watch-chip" class="mini-chip">-</span>
                                 </div>
@@ -347,7 +346,7 @@ function createLayout() {
                             <div id="anomaly-watch-preview-wrap" class="anomaly-watch-preview hidden">
                                 <img id="anomaly-watch-preview" class="anomaly-watch-preview-image" alt="ภาพแจ้งเตือนล่าสุด">
                             </div>
-                            <div id="anomaly-log-latest" class="anomaly-log-latest"></div>
+                            <div id="anomaly-db-latest" class="anomaly-db-latest hidden"></div>
                         </article>
                     </div>
                 </aside>
@@ -645,99 +644,6 @@ function createLayout() {
                     </section>
                 </section>
 
-                <section id="timeseries-gap-section" class="panel timeseries-gap-panel">
-                    <div class="panel-inner">
-                        <div id="camera-gap-block" class="camera-gap-block">
-                            <div class="panel-title">
-                                <h2 class="section-heading">
-                                    ${renderIcon("stat.svg", "Timeseries Gap Fill", "section-icon")}
-                                    <span>Timeseries Gap Fill</span>
-                                </h2>
-                                <p>ตรวจชั่วโมงที่ขาดของรอบปลูก แล้วเติม temp/pH ย้อนหลังด้วย CSV จากการ์ดเดียว</p>
-                            </div>
-                            <div id="camera-gap-summary" class="analysis-preview-note"></div>
-                            <button
-                                id="camera-gap-toggle"
-                                class="button-ghost camera-gap-toggle"
-                                type="button"
-                                aria-expanded="false"
-                                aria-controls="camera-gap-content"
-                            >
-                                แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล
-                            </button>
-                            <div
-                                id="camera-gap-content"
-                                class="camera-gap-content"
-                                hidden
-                                style="display: none;"
-                            >
-                                <div class="camera-gap-tools">
-                                    <button id="camera-gap-download-button" class="button-secondary" type="button">
-                                        Download Gap CSV
-                                    </button>
-                                    <label for="camera-gap-file-input" class="camera-gap-file-field">
-                                        Import Gap CSV
-                                        <input
-                                            id="camera-gap-file-input"
-                                            type="file"
-                                            accept=".csv,text/csv"
-                                        >
-                                    </label>
-                                    <button id="camera-gap-upload-button" class="button-primary" type="button">
-                                        Import Gap CSV
-                                    </button>
-                                </div>
-                                <div id="camera-gap-copy" class="helper-text">
-                                    ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่ขาด -> import กลับเข้า Mongo ได้ทันที
-                                </div>
-                                <div id="camera-gap-list" class="camera-gap-list"></div>
-                                <section class="schedule-builder gap-import-builder">
-                                    <div class="schedule-builder-head">
-                                        <div>
-                                            <span class="card-label">Historical temp/pH</span>
-                                            <strong>Seed Cycle CSV Import</strong>
-                                        </div>
-                                        <span class="helper-text">
-                                            ใช้เมื่ออยากเติม temp/pH ย้อนหลังทั้งชุดสำหรับ seed cycle โดยไม่ต้องเปิด Advanced DB
-                                        </span>
-                                    </div>
-                                    <div class="panel-actions">
-                                        <button id="download-template-button" class="button-secondary" type="button">
-                                            ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
-                                            Download CSV Template
-                                        </button>
-                                    </div>
-                                    <div class="model-data-tools">
-                                        <label for="seed-cycle-id-input">
-                                            Seed Cycle ID
-                                            <input
-                                                id="seed-cycle-id-input"
-                                                type="text"
-                                                placeholder="seed_cycle_..."
-                                            >
-                                        </label>
-                                        <label for="seed-readings-file-input">
-                                            Import Historical temp/pH CSV
-                                            <input
-                                                id="seed-readings-file-input"
-                                                type="file"
-                                                accept=".csv,text/csv"
-                                            >
-                                        </label>
-                                        <button id="upload-template-button" class="button-secondary" type="button">
-                                            ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
-                                            Import CSV
-                                        </button>
-                                    </div>
-                                    <div id="model-data-upload-copy" class="helper-text">
-                                        ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
-                                    </div>
-                                </section>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
                 <section id="analysis-section" class="panel analysis-hub-panel">
                     <div class="panel-inner">
                         <div class="panel-header">
@@ -777,6 +683,80 @@ function createLayout() {
                         >
                             <div id="analysis-preview-meta" class="history-metrics"></div>
                             <div id="analysis-process-grid" class="analysis-process-grid"></div>
+                            <section id="camera-gap-block" class="camera-gap-block advanced-tools-card">
+                                <div class="panel-title">
+                                    <h3 class="section-heading">
+                                        ${renderIcon("stat.svg", "Timeseries Gap Fill", "section-icon")}
+                                        <span>Timeseries Gap Fill</span>
+                                    </h3>
+                                    <p>ตรวจชั่วโมงที่ขาดของรอบปลูก แล้วเติม temp/pH ย้อนหลังจากส่วนนี้ได้ทันที</p>
+                                </div>
+                                <div id="camera-gap-summary" class="analysis-preview-note"></div>
+                                <div id="camera-gap-content" class="camera-gap-content">
+                                    <div class="camera-gap-tools">
+                                        <button id="camera-gap-download-button" class="button-secondary" type="button">
+                                            Download Gap CSV
+                                        </button>
+                                        <label for="camera-gap-file-input" class="camera-gap-file-field">
+                                            Import Gap CSV
+                                            <input
+                                                id="camera-gap-file-input"
+                                                type="file"
+                                                accept=".csv,text/csv"
+                                            >
+                                        </label>
+                                        <button id="camera-gap-upload-button" class="button-primary" type="button">
+                                            Import Gap CSV
+                                        </button>
+                                    </div>
+                                    <div id="camera-gap-copy" class="helper-text">
+                                        ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่ขาด -> import กลับเข้า Mongo ได้ทันที
+                                    </div>
+                                    <div id="camera-gap-list" class="camera-gap-list"></div>
+                                    <section class="schedule-builder gap-import-builder">
+                                        <div class="schedule-builder-head">
+                                            <div>
+                                                <span class="card-label">Historical temp/pH</span>
+                                                <strong>Seed Cycle CSV Import</strong>
+                                            </div>
+                                            <span class="helper-text">
+                                                ใช้เมื่ออยากเติม temp/pH ย้อนหลังทั้งชุดสำหรับ seed cycle โดยไม่ต้องเปิด section อื่นเพิ่ม
+                                            </span>
+                                        </div>
+                                        <div class="panel-actions">
+                                            <button id="download-template-button" class="button-secondary" type="button">
+                                                ${renderIcon("ChooseFile.svg", "Download CSV Template", "button-icon")}
+                                                Download CSV Template
+                                            </button>
+                                        </div>
+                                        <div class="model-data-tools">
+                                            <label for="seed-cycle-id-input">
+                                                Seed Cycle ID
+                                                <input
+                                                    id="seed-cycle-id-input"
+                                                    type="text"
+                                                    placeholder="seed_cycle_..."
+                                                >
+                                            </label>
+                                            <label for="seed-readings-file-input">
+                                                Import Historical temp/pH CSV
+                                                <input
+                                                    id="seed-readings-file-input"
+                                                    type="file"
+                                                    accept=".csv,text/csv"
+                                                >
+                                            </label>
+                                            <button id="upload-template-button" class="button-secondary" type="button">
+                                                ${renderIcon("ChooseFile.svg", "Import CSV", "button-icon")}
+                                                Import CSV
+                                            </button>
+                                        </div>
+                                        <div id="model-data-upload-copy" class="helper-text">
+                                            ดาวน์โหลด template -> กรอก temp/pH ย้อนหลัง -> import กลับเข้า Mongo สำหรับ seed cycle
+                                        </div>
+                                    </section>
+                                </div>
+                            </section>
                             <div id="analysis-footer-note" class="analysis-note"></div>
                         </div>
                     </div>
@@ -2851,24 +2831,6 @@ function setLiveAnalysisOpenState(open) {
     cameraSection.classList.toggle("live-analysis-open", open);
 }
 
-function setCameraGapOpenState(open) {
-    cameraGapOpen = open;
-    const button = document.getElementById("camera-gap-toggle");
-    const content = document.getElementById("camera-gap-content");
-    if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLDivElement)) {
-        return;
-    }
-
-    button.textContent = open
-        ? "ซ่อนช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล"
-        : "แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล";
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.classList.toggle("open", open);
-    content.hidden = !open;
-    content.style.display = open ? "grid" : "none";
-    content.setAttribute("aria-hidden", open ? "false" : "true");
-}
-
 function setLightScheduleOpenState(open) {
     lightScheduleOpen = open;
     const button = document.getElementById("light-schedule-toggle");
@@ -3410,9 +3372,9 @@ function renderAnomalyWatch(state) {
     const lastCopy = document.getElementById("anomaly-watch-last-copy");
     const previewWrap = document.getElementById("anomaly-watch-preview-wrap");
     const previewImage = document.getElementById("anomaly-watch-preview");
-    const latestLog = document.getElementById("anomaly-log-latest");
+    const latestDb = document.getElementById("anomaly-db-latest");
     const dbRefreshButton = document.getElementById("anomaly-db-refresh-button");
-    if (!(chip instanceof HTMLElement) || !(title instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(lastCopy instanceof HTMLElement) || !(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement) || !(latestLog instanceof HTMLElement) || !(dbRefreshButton instanceof HTMLButtonElement)) {
+    if (!(chip instanceof HTMLElement) || !(title instanceof HTMLElement) || !(copy instanceof HTMLElement) || !(lastCopy instanceof HTMLElement) || !(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement) || !(latestDb instanceof HTMLElement) || !(dbRefreshButton instanceof HTMLButtonElement)) {
         return;
     }
 
@@ -3429,7 +3391,8 @@ function renderAnomalyWatch(state) {
         previewImage.removeAttribute("src");
         dbRefreshButton.disabled = true;
         dbRefreshButton.setAttribute("aria-busy", "false");
-        latestLog.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีข้อความ anomaly จาก DB</div>`;
+        latestDb.textContent = "";
+        latestDb.classList.add("hidden");
         return;
     }
 
@@ -3457,7 +3420,7 @@ function renderAnomalyWatch(state) {
         chip.textContent = webhookConfigured ? "Webhook พร้อม" : "เก็บ local";
         chip.className = "mini-chip active";
         title.textContent = recentAlerts > 0
-            ? `พบ alert ใน 24 ชม. ล่าสุด ${formatNumber(recentAlerts, 0)} ครั้ง`
+            ? "พบ anomaly ล่าสุดแล้ว"
             : "กำลังเฝ้าดูภาพสดอยู่";
     } else {
         chip.textContent = "ไม่ทำงาน";
@@ -3467,9 +3430,8 @@ function renderAnomalyWatch(state) {
 
     copy.textContent = [
         pollSeconds > 0 ? `ตรวจทุก ${formatNumber(pollSeconds, 0)} วินาที` : null,
-        minAreaPercent > 0 ? `แจ้งเมื่อ blob เกิน ${formatNumber(minAreaPercent, 1)}%` : null,
-        webhookConfigured ? "มี webhook แล้ว" : "เก็บเฉพาะ text log",
-        "เก็บภาพล่าสุดไว้ใน memory เท่านั้น",
+        minAreaPercent > 0 ? `เกณฑ์เริ่มต้น ${formatNumber(minAreaPercent, 1)}%` : null,
+        "รูปล่าสุดอยู่ใน memory เท่านั้น",
     ].filter(Boolean).join(" • ");
 
     if (latestPreviewUrl && latestAlert?.detected_at) {
@@ -3483,58 +3445,31 @@ function renderAnomalyWatch(state) {
 
     if (hasError) {
         lastCopy.textContent = String(status.last_error || "-");
-    } else if (latestAlert?.detected_at) {
+    } else if (latestPreviewUrl && latestAlert?.detected_at) {
         lastCopy.textContent = [
             `ภาพล่าสุด ${formatTimestamp(latestAlert.detected_at)}`,
             "เมื่อพบรอบใหม่จะเปลี่ยนรูปนี้ทันที",
-            "ข้อความด้านล่างดึงจาก DB ล่าสุด 1 รายการ",
         ].filter(Boolean).join(" • ");
+    } else if (latestAlert?.detected_at) {
+        lastCopy.textContent = `มีข้อความล่าสุดใน DB ที่ ${formatTimestamp(latestAlert.detected_at)}`;
     } else if (status.last_checked_at) {
         lastCopy.textContent = `เช็กล่าสุด ${formatTimestamp(status.last_checked_at)} • ยังไม่พบ alert`;
     } else {
         lastCopy.textContent = "กำลังรอ baseline รอบแรกจากกล้อง";
     }
 
-    renderLatestAnomalyLog(latestLog, latestAlert);
+    renderLatestAnomalyDbLine(latestDb, latestAlert);
 }
 
-function renderLatestAnomalyLog(container, alert) {
+function renderLatestAnomalyDbLine(container, alert) {
     if (!alert) {
-        container.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีข้อความ anomaly จาก DB</div>`;
+        container.textContent = "";
+        container.classList.add("hidden");
         return;
     }
 
-    const severity = Number(alert.largest_blob_percent ?? 0) >= 5 ? "danger" : "warning";
-    const summary = alert.summary_text || "ตรวจพบสิ่งแปลกปลอม";
-    const details = [
-        alert.changed_area_percent !== null && alert.changed_area_percent !== undefined
-            ? `changed ${formatNumber(alert.changed_area_percent, 2)}%`
-            : null,
-        alert.green_coverage_percent !== null && alert.green_coverage_percent !== undefined
-            ? `coverage ${formatNumber(alert.green_coverage_percent, 2)}%`
-            : null,
-        alert.light_is_on === null || alert.light_is_on === undefined
-            ? null
-            : `ไฟ ${alert.light_is_on ? "เปิด" : "ปิด"}`,
-    ].filter(Boolean);
-    container.innerHTML = `
-        <article class="anomaly-log-item anomaly-log-item-latest">
-            <div class="anomaly-log-head">
-                <div class="anomaly-log-source">
-                    ${renderIcon("db.svg", "ข้อความล่าสุดจาก DB", "anomaly-log-icon")}
-                    <span>Latest DB Log</span>
-                </div>
-                <span class="helper-text">${escapeHtml(formatTimestamp(alert.detected_at))}</span>
-            </div>
-            <div class="anomaly-log-metrics">
-                <span class="mini-chip ${severity}">
-                    ${escapeHtml(`blob ${formatNumber(alert.largest_blob_percent, 2)}%`)}
-                </span>
-                ${details.map((detail) => `<span class="mini-chip">${escapeHtml(String(detail))}</span>`).join("")}
-            </div>
-            <strong>${escapeHtml(summary)}</strong>
-        </article>
-    `;
+    container.textContent = `DB ล่าสุด ${formatTimestamp(alert.detected_at)}`;
+    container.classList.remove("hidden");
 }
 
 function queueAnomalyRefresh(delayMs = ANOMALY_POLL_MS) {
@@ -3739,7 +3674,6 @@ function bindRuleContainer(containerId) {
 function bindEvents() {
     setAnalysisRefreshState(false);
     setAnalysisAdvancedOpenState(false);
-    setCameraGapOpenState(false);
     setLiveAnalysisOpenState(false);
     setLightScheduleOpenState(false);
     setPumpWaterScheduleOpenState(false);
@@ -3787,10 +3721,6 @@ function bindEvents() {
 
     $("live-analysis-toggle").addEventListener("click", () => {
         setLiveAnalysisOpenState(!liveAnalysisOpen);
-    });
-
-    $("camera-gap-toggle").addEventListener("click", () => {
-        setCameraGapOpenState(!cameraGapOpen);
     });
 
     $("light-schedule-toggle").addEventListener("click", () => {
@@ -3876,7 +3806,6 @@ function bindEvents() {
     });
 
     window.addEventListener("pageshow", () => {
-        setCameraGapOpenState(false);
         setLiveAnalysisOpenState(false);
         setAnalysisAdvancedOpenState(false);
         setLightScheduleOpenState(false);
@@ -4277,7 +4206,6 @@ async function bootstrap() {
     void refreshAnomalyWatchFast();
     renderNextSensorSaveCountdown();
     setAnalysisAdvancedOpenState(false);
-    setCameraGapOpenState(false);
     setLiveAnalysisOpenState(false);
     queueRefresh();
     queueAnomalyRefresh();
