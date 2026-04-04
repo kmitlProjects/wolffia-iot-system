@@ -139,6 +139,25 @@ export function importModelDataTemplate(payload: {
     })
 }
 
+export function importTimeseriesGapCsv(payload: {
+    cycle_id: string
+    csv_text: string
+    filename?: string
+    skip_blank_rows?: boolean
+}): Promise<{
+    import_result: {
+        cycle_id: string
+        rows_created: number
+        rows_updated: number
+        affected_dates: string[]
+    }
+}> {
+    return requestJson("/timeseries/gap-import", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    })
+}
+
 export function previewHarvestPrediction(
     payload: { lookback_days?: number; sensor_limit?: number } = {},
 ): Promise<HarvestPredictionPreviewResponse> {

@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import io
 import json
 import os
 import threading
@@ -213,6 +215,13 @@ class HarvestPredictionRequest(BaseModel):
 
 
 class ModelDataImportRequest(BaseModel):
+    cycle_id: str
+    csv_text: str
+    filename: str | None = None
+    skip_blank_rows: bool = True
+
+
+class TimeseriesGapImportRequest(BaseModel):
     cycle_id: str
     csv_text: str
     filename: str | None = None
@@ -441,6 +450,102 @@ def get_grouped_automation_rules():
             grouped[device].append(rule)
 
     return grouped
+
+
+def _coerce_optional_float(value):
+    raw = str(value or "").strip()
+    if raw == "":
+        return None
+    return float(raw)
+
+
+def _parse_gap_timestamp(value, timezone_name: str):
+    raw = str(value or "").strip()
+    if raw == "":
+        return None
+
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=ZoneInfo(timezone_name))
+    return parsed.astimezone(ZoneInfo(timezone_name))
+
+
+def import_timeseries_gap_csv(
+    csv_text: str,
+    cycle_id: str,
+    timezone_name: str = APP_TIMEZONE,
+    skip_blank_rows: bool = True,
+):
+    cycle_document = grow_cycle_collection.find_one({"cycle_id": cycle_id})
+    if cycle_document is None:
+        raise ValueError(f"cycle not found: {cycle_id}")
+
+    rows_created = 0
+    rows_updated = 0
+    affected_dates = set()
+    reader = csv.DictReader(io.StringIO(csv_text))
+
+    for row in reader:
+        observed_at = _parse_gap_timestamp(
+            row.get("timestamp_local") or row.get("timestamp"),
+            timezone_name,
+        )
+        if observed_at is None:
+            continue
+
+        temp_value = _coerce_optional_float(row.get("temp"))
+        ph_value = _coerce_optional_float(row.get("ph"))
+        if skip_blank_rows and temp_value is None and ph_value is None:
+            continue
+
+        cycle_context = build_cycle_context(
+            cycle_document,
+            observed_at,
+            timezone_name,
+        )
+        payload = {
+            "timestamp": observed_at,
+            "temp": temp_value,
+            "ph": ph_value,
+            "data_source": "manual_timeseries_gap_import",
+            **cycle_context,
+        }
+        existing_document = collection.find_one(
+            {
+                "cycle_id": cycle_id,
+                "timestamp": observed_at,
+            }
+        )
+
+        if existing_document is None:
+            collection.insert_one(payload)
+            rows_created += 1
+        else:
+            collection.update_one(
+                {"_id": existing_document["_id"]},
+                {"$set": payload},
+            )
+            rows_updated += 1
+
+        affected_dates.add(
+            observed_at.astimezone(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
+        )
+
+    for date_key in sorted(affected_dates):
+        summarize_day(
+            collection,
+            image_analysis_collection,
+            daily_summary_collection,
+            timezone_name,
+            date_key,
+        )
+
+    return {
+        "cycle_id": cycle_id,
+        "rows_created": rows_created,
+        "rows_updated": rows_updated,
+        "affected_dates": sorted(affected_dates),
+    }
 
 
 def get_timeseries_stats():
@@ -777,6 +882,30 @@ def import_model_data_template(payload: ModelDataImportRequest):
     try:
         result = import_seed_readings(
             input_csv=target_path,
+            cycle_id=cycle_id,
+            timezone_name=APP_TIMEZONE,
+            skip_blank_rows=payload.skip_blank_rows,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "import_result": result,
+    }
+
+
+@app.post("/timeseries/gap-import")
+def import_timeseries_gap(payload: TimeseriesGapImportRequest):
+    cycle_id = (payload.cycle_id or "").strip()
+    csv_text = payload.csv_text or ""
+    if not cycle_id:
+        raise HTTPException(status_code=400, detail="cycle_id is required")
+    if not csv_text.strip():
+        raise HTTPException(status_code=400, detail="csv_text is required")
+
+    try:
+        result = import_timeseries_gap_csv(
+            csv_text=csv_text,
             cycle_id=cycle_id,
             timezone_name=APP_TIMEZONE,
             skip_blank_rows=payload.skip_blank_rows,

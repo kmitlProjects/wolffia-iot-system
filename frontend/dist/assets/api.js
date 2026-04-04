@@ -94,6 +94,13 @@ export function importModelDataTemplate(payload) {
     });
 }
 
+export function importTimeseriesGapCsv(payload) {
+    return requestJson("/timeseries/gap-import", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
 export function previewHarvestPrediction(payload = {}) {
     return requestJson("/predictions/harvest/preview", {
         method: "POST",

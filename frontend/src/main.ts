@@ -10,6 +10,7 @@ import {
     fetchSensorHistory,
     harvestGrowCycle,
     importModelDataTemplate,
+    importTimeseriesGapCsv,
     previewHarvestPrediction,
     setAutomationRuleEnabled,
     startFertilizerPump,
@@ -18,7 +19,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260401aa"
+} from "./api.js?v=20260404z"
 import type {
     DailySummary,
     DashboardState,
@@ -67,12 +68,14 @@ let cycleActionPending = false
 let analysisRefreshPending = false
 let datasetExportPending = false
 let datasetImportPending = false
+let gapImportPending = false
 let templateDownloadPending = false
 let predictionPreviewPending = false
 let predictionPreview: HarvestPredictionPreviewResponse | null = null
 let liveCameraAnalysisPending = false
 let liveCameraAnalysis: LiveCameraAnalysis | null = null
 let analysisAdvancedOpen = false
+let cameraGapOpen = false
 let liveAnalysisOpen = false
 
 function $(id: string): HTMLElement {
@@ -161,6 +164,52 @@ function createLayout(): string {
                                 <p id="camera-overlay-copy">
                                     Camera paused to reduce CPU load.
                                 </p>
+                            </div>
+                        </div>
+                        <div class="camera-gap-block">
+                            <div class="panel-title">
+                                <h3 class="section-heading">
+                                    ${renderIcon("stat.svg", "Timeseries Gap Fill", "section-icon")}
+                                    <span>Timeseries Gap Fill</span>
+                                </h3>
+                                <p>ตรวจหาชั่วโมงที่หายของรอบปลูกนี้ แล้วสร้าง CSV เพื่อกรอก temp/pH ย้อนหลังกลับเข้า Mongo ได้เลย</p>
+                            </div>
+                            <div id="camera-gap-summary" class="analysis-preview-note"></div>
+                            <button
+                                id="camera-gap-toggle"
+                                class="button-ghost camera-gap-toggle"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="camera-gap-content"
+                            >
+                                แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล
+                            </button>
+                            <div
+                                id="camera-gap-content"
+                                class="camera-gap-content"
+                                hidden
+                                style="display: none;"
+                            >
+                                <div class="camera-gap-tools">
+                                    <button id="camera-gap-download-button" class="button-secondary" type="button">
+                                        Download Gap CSV
+                                    </button>
+                                    <label for="camera-gap-file-input" class="camera-gap-file-field">
+                                        Import Gap CSV
+                                        <input
+                                            id="camera-gap-file-input"
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                        >
+                                    </label>
+                                    <button id="camera-gap-upload-button" class="button-primary" type="button">
+                                        Import Gap CSV
+                                    </button>
+                                </div>
+                                <div id="camera-gap-copy" class="helper-text">
+                                    ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่ขาด -> import กลับเข้า Mongo ได้ทันที
+                                </div>
+                                <div id="camera-gap-list" class="camera-gap-list"></div>
                             </div>
                         </div>
                         <div class="camera-analysis-block">
@@ -2228,6 +2277,14 @@ function getTodayTimeseriesCount(state: DashboardState | null = dashboardState):
     )).length
 }
 
+function getCurrentCycleId(state: DashboardState | null = dashboardState): string {
+    return (
+        state?.grow_cycle?.cycle_id?.trim() ||
+        state?.sensor?.cycle_id?.trim() ||
+        ""
+    )
+}
+
 function getCycleTimeseriesItems(state: DashboardState | null = dashboardState): SensorReading[] {
     const cycleId = state?.grow_cycle?.cycle_id ?? state?.sensor?.cycle_id ?? null
     const plantedAt = state?.grow_cycle?.planted_at ?? state?.sensor?.cycle_planted_at ?? null
@@ -2255,6 +2312,254 @@ function getCycleTimeseriesItems(state: DashboardState | null = dashboardState):
     return filtered.length > 0
         ? filtered
         : sensorHistory.slice(-fallbackLimit)
+}
+
+function getCycleDayIndexForDate(
+    value: Date,
+    state: DashboardState | null = dashboardState,
+): number | null {
+    const plantedAt = state?.grow_cycle?.planted_at ?? state?.sensor?.cycle_planted_at ?? null
+    if (!plantedAt) {
+        return null
+    }
+
+    const plantedDate = new Date(plantedAt)
+    if (Number.isNaN(plantedDate.getTime())) {
+        return null
+    }
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000
+    return Math.max(
+        Math.floor((value.getTime() - plantedDate.getTime()) / millisecondsPerDay) + 1,
+        1,
+    )
+}
+
+function getTimeseriesGapAnalysis(state: DashboardState | null = dashboardState): {
+    cycleId: string
+    slots: Array<{
+        at: Date
+        label: string
+        csvTimestamp: string
+        dayIndex: number | null
+    }>
+    groups: Array<{
+        startLabel: string
+        endLabel: string
+        count: number
+        slots: Array<{
+            at: Date
+            label: string
+            csvTimestamp: string
+            dayIndex: number | null
+        }>
+    }>
+} {
+    const cycleId = getCurrentCycleId(state)
+    const intervalMs = Math.max(1, getSensorIntervalSeconds(state)) * 1000
+    const toleranceMs = Math.min(
+        Math.max(intervalMs * 0.25, 5 * 60 * 1000),
+        15 * 60 * 1000,
+    )
+    const items = getCycleTimeseriesItems(state)
+        .map((item) => ({
+            item,
+            timestamp: item.timestamp ? new Date(item.timestamp) : null,
+        }))
+        .filter((entry) => entry.timestamp && !Number.isNaN(entry.timestamp.getTime()))
+        .sort((left, right) => left.timestamp!.getTime() - right.timestamp!.getTime())
+
+    const slots: Array<{
+        at: Date
+        label: string
+        csvTimestamp: string
+        dayIndex: number | null
+    }> = []
+
+    const pushSlotsBetween = (startMs: number, endMs: number) => {
+        let candidateMs = startMs + intervalMs
+        while (candidateMs < endMs - toleranceMs) {
+            const candidateDate = new Date(candidateMs)
+            slots.push({
+                at: candidateDate,
+                label: formatTimestamp(candidateDate.toISOString()),
+                csvTimestamp: candidateDate.toISOString(),
+                dayIndex: getCycleDayIndexForDate(candidateDate, state),
+            })
+            candidateMs += intervalMs
+        }
+    }
+
+    if (items.length > 0) {
+        const plantedAtMs = getTimestampValue(
+            state?.grow_cycle?.planted_at ?? state?.sensor?.cycle_planted_at ?? null,
+        )
+        if (plantedAtMs >= 0) {
+            pushSlotsBetween(plantedAtMs, items[0].timestamp!.getTime())
+        }
+
+        for (let index = 0; index < items.length - 1; index += 1) {
+            pushSlotsBetween(
+                items[index].timestamp!.getTime(),
+                items[index + 1].timestamp!.getTime(),
+            )
+        }
+
+        const referenceEndMs = getTimestampValue(
+            state?.meta.generated_at ?? state?.sensor?.timestamp ?? null,
+        )
+        if (referenceEndMs >= 0) {
+            pushSlotsBetween(items[items.length - 1].timestamp!.getTime(), referenceEndMs)
+        }
+    }
+
+    const groups: Array<{
+        startLabel: string
+        endLabel: string
+        count: number
+        slots: typeof slots
+    }> = []
+
+    slots.forEach((slot) => {
+        const previousGroup = groups[groups.length - 1]
+        const previousSlot = previousGroup?.slots[previousGroup.slots.length - 1]
+        if (
+            previousGroup &&
+            previousSlot &&
+            (slot.at.getTime() - previousSlot.at.getTime()) <= intervalMs + 1000
+        ) {
+            previousGroup.slots.push(slot)
+            previousGroup.count = previousGroup.slots.length
+            previousGroup.endLabel = slot.label
+            return
+        }
+
+        groups.push({
+            startLabel: slot.label,
+            endLabel: slot.label,
+            count: 1,
+            slots: [slot],
+        })
+    })
+
+    return {
+        cycleId,
+        slots,
+        groups,
+    }
+}
+
+function buildTimeseriesGapCsv(state: DashboardState | null = dashboardState): {
+    csvText: string
+    filename: string
+    slotCount: number
+} | null {
+    const gapAnalysis = getTimeseriesGapAnalysis(state)
+    if (!gapAnalysis.cycleId || gapAnalysis.slots.length === 0) {
+        return null
+    }
+
+    const header = ["timestamp_local", "temp", "ph", "cycle_id", "cycle_day_index"]
+    const rows = gapAnalysis.slots.map((slot) => [
+        slot.csvTimestamp,
+        "",
+        "",
+        gapAnalysis.cycleId,
+        slot.dayIndex !== null ? String(slot.dayIndex) : "",
+    ])
+    const csvText = [header, ...rows]
+        .map((row) => row.join(","))
+        .join("\n")
+    const safeCycleId = gapAnalysis.cycleId.replace(/[^a-zA-Z0-9_-]+/g, "_")
+    const filename = `${safeCycleId}_timeseries_gap_fill.csv`
+
+    return {
+        csvText,
+        filename,
+        slotCount: gapAnalysis.slots.length,
+    }
+}
+
+function setCameraGapImportState(pending: boolean): void {
+    const button = document.getElementById("camera-gap-upload-button") as HTMLButtonElement | null
+    if (!button) {
+        return
+    }
+
+    button.disabled = pending
+    button.textContent = pending ? "Importing..." : "Import Gap CSV"
+}
+
+function renderTimeseriesGapFill(state: DashboardState | null = dashboardState): void {
+    const summary = document.getElementById("camera-gap-summary")
+    const list = document.getElementById("camera-gap-list")
+    const copy = document.getElementById("camera-gap-copy")
+    const downloadButton = document.getElementById("camera-gap-download-button") as HTMLButtonElement | null
+
+    if (!(summary instanceof HTMLElement) || !(list instanceof HTMLElement) || !(copy instanceof HTMLElement) || !downloadButton) {
+        return
+    }
+
+    const gapAnalysis = getTimeseriesGapAnalysis(state)
+    const cycleItems = getCycleTimeseriesItems(state)
+    const slotCount = gapAnalysis.slots.length
+    const groupCount = gapAnalysis.groups.length
+
+    downloadButton.disabled = !gapAnalysis.cycleId || slotCount === 0
+
+    if (!gapAnalysis.cycleId) {
+        summary.textContent = "ยังไม่มีรอบปลูก active สำหรับตรวจว่าชั่วโมงไหนของ timeseries หายไป"
+        copy.textContent = "เริ่มรอบปลูกก่อน แล้วระบบจะแสดงช่องว่างของข้อมูลรายชั่วโมงให้เติมได้ตรงนี้"
+        list.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีรอบปลูกสำหรับตรวจ gap</div>`
+        return
+    }
+
+    if (cycleItems.length === 0) {
+        summary.textContent = "ยังไม่มีแถว timeseries ของรอบปลูกนี้พอสำหรับตรวจช่องว่าง"
+        copy.textContent = "เมื่อมีข้อมูลรายชั่วโมงอย่างน้อย 1 จุด ระบบจะเริ่มคำนวณ gap ให้ทันที"
+        list.innerHTML = `<div class="rule-card rule-empty">ยังไม่มีข้อมูลรายชั่วโมงของรอบปลูกนี้</div>`
+        return
+    }
+
+    if (slotCount === 0) {
+        summary.textContent = "ยังไม่พบชั่วโมงที่ขาดของรอบปลูกนี้จากข้อมูลที่โหลดอยู่ตอนนี้"
+        copy.textContent = "ถ้ามีการขาดช่วงในอนาคต ระบบจะแสดงรายการ gap ตรงนี้และให้ดาวน์โหลด CSV ไปกรอก temp/pH ได้ทันที"
+        list.innerHTML = `<div class="rule-card rule-empty">ยังไม่พบ gap ของข้อมูลรายชั่วโมง</div>`
+        return
+    }
+
+    summary.textContent = `พบช่องว่าง ${formatInteger(slotCount)} ชั่วโมง จาก ${formatInteger(groupCount)} ช่วง ของรอบปลูกนี้`
+    copy.textContent = "ดาวน์โหลด CSV ช่องว่าง -> กรอก temp/pH เฉพาะชั่วโมงที่หาย -> import กลับเข้า Mongo ได้ทันที"
+
+    list.innerHTML = gapAnalysis.groups
+        .slice(0, 8)
+        .map((group, index) => {
+            const visibleSlots = group.slots.slice(0, 10)
+            const extraCount = group.slots.length - visibleSlots.length
+            return `
+                <article class="rule-card gap-card">
+                    <div class="gap-card-head">
+                        <strong>Gap ${index + 1}</strong>
+                        <span class="mini-chip warning">ขาด ${formatInteger(group.count)} ชั่วโมง</span>
+                    </div>
+                    <div class="helper-text">${escapeHtml(group.startLabel)} - ${escapeHtml(group.endLabel)}</div>
+                    <div class="gap-chip-list">
+                        ${visibleSlots.map((slot) => `<span class="gap-chip">${escapeHtml(slot.label)}</span>`).join("")}
+                        ${extraCount > 0 ? `<span class="gap-chip gap-chip-muted">+ อีก ${formatInteger(extraCount)} ชั่วโมง</span>` : ""}
+                    </div>
+                </article>
+            `
+        })
+        .join("")
+
+    if (gapAnalysis.groups.length > 8) {
+        list.innerHTML += `
+            <div class="rule-card rule-empty">
+                ยังมี gap เพิ่มอีก ${formatInteger(gapAnalysis.groups.length - 8)} ช่วง
+                ดาวน์โหลด CSV เพื่อดูรายการชั่วโมงที่ขาดทั้งหมดได้
+            </div>
+        `
+    }
 }
 
 function renderTimeseriesProgressSummary(state: DashboardState | null = dashboardState): void {
@@ -2375,6 +2680,24 @@ function setLiveAnalysisOpenState(open: boolean): void {
     button.textContent = open
         ? "ซ่อนภาพตรวจสอบ OpenCV"
         : "แสดงภาพตรวจสอบ OpenCV"
+    button.setAttribute("aria-expanded", open ? "true" : "false")
+    button.classList.toggle("open", open)
+    content.hidden = !open
+    content.style.display = open ? "grid" : "none"
+    content.setAttribute("aria-hidden", open ? "false" : "true")
+}
+
+function setCameraGapOpenState(open: boolean): void {
+    cameraGapOpen = open
+    const button = document.getElementById("camera-gap-toggle") as HTMLButtonElement | null
+    const content = document.getElementById("camera-gap-content") as HTMLDivElement | null
+    if (!button || !content) {
+        return
+    }
+
+    button.textContent = open
+        ? "ซ่อนช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล"
+        : "แสดงช่วงเวลาที่ขาดและเครื่องมือเติมข้อมูล"
     button.setAttribute("aria-expanded", open ? "true" : "false")
     button.classList.toggle("open", open)
     content.hidden = !open
@@ -2791,6 +3114,7 @@ function renderDashboard(state: DashboardState): void {
     renderFertilizerPumps(fertilizer.pumps)
     renderWaterPumpHelper(state)
     renderSensorCharts(sensorHistory)
+    renderTimeseriesGapFill(state)
     renderDailySummarySection(
         state.daily_summary,
         state.image_analysis,
@@ -2895,9 +3219,11 @@ function bindRuleContainer(containerId: string): void {
 function bindEvents(): void {
     setAnalysisRefreshState(false)
     setAnalysisAdvancedOpenState(false)
+    setCameraGapOpenState(false)
     setLiveAnalysisOpenState(false)
     setDatasetExportState(false)
     setDatasetImportState(false)
+    setCameraGapImportState(false)
     setTemplateDownloadState(false)
     setPredictionPreviewState(false)
     ensureNextSensorSaveTimer()
@@ -2939,11 +3265,78 @@ function bindEvents(): void {
         setLiveAnalysisOpenState(!liveAnalysisOpen)
     })
 
+    $("camera-gap-toggle").addEventListener("click", () => {
+        setCameraGapOpenState(!cameraGapOpen)
+    })
+
+    $("camera-gap-download-button").addEventListener("click", () => {
+        const exportMeta = buildTimeseriesGapCsv(dashboardState)
+        if (!exportMeta) {
+            setMessage("ยังไม่มีชั่วโมงที่ขาดให้ดาวน์โหลดเป็น CSV", "error")
+            return
+        }
+
+        triggerBlobDownload(
+            new Blob([exportMeta.csvText], { type: "text/csv;charset=utf-8" }),
+            exportMeta.filename,
+        )
+        setMessage(`ดาวน์โหลด CSV ช่องว่างแล้ว (${exportMeta.slotCount} ชั่วโมง)`)
+    })
+
+    $("camera-gap-upload-button").addEventListener("click", async () => {
+        if (gapImportPending) {
+            return
+        }
+
+        const cycleId = getCurrentCycleId(dashboardState)
+        const fileInput = document.getElementById("camera-gap-file-input") as HTMLInputElement | null
+        const file = fileInput?.files?.[0]
+
+        if (!cycleId) {
+            setMessage("ยังไม่มี cycle_id สำหรับ import gap CSV", "error")
+            return
+        }
+
+        if (!file) {
+            setMessage("กรุณาเลือกไฟล์ Gap CSV ก่อน import", "error")
+            return
+        }
+
+        gapImportPending = true
+        setCameraGapImportState(true)
+        try {
+            const csvText = await file.text()
+            const result = await importTimeseriesGapCsv({
+                cycle_id: cycleId,
+                csv_text: csvText,
+                filename: file.name,
+                skip_blank_rows: true,
+            })
+            const rowsCreated = result.import_result?.rows_created ?? 0
+            const rowsUpdated = result.import_result?.rows_updated ?? 0
+            await refreshDashboard(true)
+            if (dashboardState) {
+                renderDashboard(dashboardState)
+            }
+            if (fileInput) {
+                fileInput.value = ""
+            }
+            setMessage(`import gap CSV แล้ว (create ${rowsCreated} / update ${rowsUpdated})`)
+        } catch (error) {
+            const text = error instanceof Error ? error.message : "import gap CSV ไม่สำเร็จ"
+            setMessage(text, "error")
+        } finally {
+            gapImportPending = false
+            setCameraGapImportState(false)
+        }
+    })
+
     $("analysis-advanced-toggle").addEventListener("click", () => {
         setAnalysisAdvancedOpenState(!analysisAdvancedOpen)
     })
 
     window.addEventListener("pageshow", () => {
+        setCameraGapOpenState(false)
         setLiveAnalysisOpenState(false)
         setAnalysisAdvancedOpenState(false)
     })
@@ -3254,6 +3647,7 @@ async function bootstrap(): Promise<void> {
     await refreshDashboard()
     renderNextSensorSaveCountdown()
     setAnalysisAdvancedOpenState(false)
+    setCameraGapOpenState(false)
     setLiveAnalysisOpenState(false)
     queueRefresh()
 }
