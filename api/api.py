@@ -58,6 +58,7 @@ from config import (
     ANOMALY_ALERT_COLLECTION,
     ANOMALY_COOLDOWN_SECONDS,
     ANOMALY_DIFF_THRESHOLD,
+    ANOMALY_FRAME_MIN_AREA_PERCENT,
     ANOMALY_MIN_AREA_PERCENT,
     ANOMALY_OUTPUT_DIR,
     ANOMALY_PERSIST_FRAMES,
@@ -180,6 +181,7 @@ anomaly_watcher = AnomalyWatcher(
     ANOMALY_WATCH_ENABLED,
     ANOMALY_WEBHOOK_URL,
     ANOMALY_MIN_AREA_PERCENT,
+    ANOMALY_FRAME_MIN_AREA_PERCENT,
     ANOMALY_PERSIST_FRAMES,
     ANOMALY_COOLDOWN_SECONDS,
     ANOMALY_DIFF_THRESHOLD,
@@ -249,6 +251,7 @@ class AnomalyWatchConfigRequest(BaseModel):
     enabled: bool | None = None
     webhook_url: str | None = None
     min_area_percent: float | None = None
+    frame_min_area_percent: float | None = None
     persist_frames: int | None = None
     cooldown_seconds: int | None = None
     poll_seconds: int | None = None
@@ -937,6 +940,16 @@ def anomaly_watch_status():
     }
 
 
+@app.post("/anomaly-watch/check-now")
+def anomaly_watch_check_now():
+    try:
+        result = anomaly_watcher.inspect_now()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"result": result}
+
+
 @app.patch("/anomaly-watch/config")
 def update_anomaly_watch_config(payload: AnomalyWatchConfigRequest):
     try:
@@ -944,6 +957,7 @@ def update_anomaly_watch_config(payload: AnomalyWatchConfigRequest):
             enabled=payload.enabled,
             webhook_url=payload.webhook_url,
             min_area_percent=payload.min_area_percent,
+            frame_min_area_percent=payload.frame_min_area_percent,
             persist_frames=payload.persist_frames,
             cooldown_seconds=payload.cooldown_seconds,
             poll_seconds=payload.poll_seconds,

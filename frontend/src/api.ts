@@ -1,5 +1,6 @@
 import type {
     AnomalyAlert,
+    AnomalyCheckResult,
     AnomalyWatchStatus,
     DailySummary,
     DashboardState,
@@ -113,6 +114,14 @@ export function fetchAnomalyAlerts(limit = 1): Promise<{
     items: AnomalyAlert[]
 }> {
     return requestJson(`/anomaly-alerts?limit=${limit}`)
+}
+
+export function checkAnomalyNow(): Promise<{
+    result: AnomalyCheckResult
+}> {
+    return requestJson("/anomaly-watch/check-now", {
+        method: "POST",
+    })
 }
 
 export function downloadModelDataTemplate(): Promise<{

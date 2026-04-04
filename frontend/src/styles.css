@@ -939,6 +939,41 @@ label {
     gap: 0.55rem;
 }
 
+.anomaly-watch-metrics {
+    display: grid;
+    gap: 0.52rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.anomaly-watch-metric {
+    display: grid;
+    gap: 0.16rem;
+    padding: 0.72rem 0.78rem;
+    border-radius: 0.92rem;
+    background:
+        linear-gradient(180deg, rgba(18, 128, 106, 0.08), rgba(18, 128, 106, 0.03)),
+        rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(18, 128, 106, 0.12);
+    min-width: 0;
+}
+
+.anomaly-watch-metric strong {
+    font-size: 1.02rem;
+    color: var(--ink);
+}
+
+.anomaly-watch-metric-label {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.anomaly-watch-debug-copy {
+    padding: 0.1rem 0 0.18rem;
+}
+
 .anomaly-watch-head-tools {
     display: flex;
     flex-wrap: wrap;
@@ -990,15 +1025,6 @@ label {
     width: 100%;
     aspect-ratio: 5 / 4;
     object-fit: cover;
-}
-
-.anomaly-db-latest {
-    padding: 0.55rem 0.7rem;
-    border-radius: 14px;
-    background: rgba(18, 128, 106, 0.06);
-    border: 1px solid rgba(18, 128, 106, 0.08);
-    color: var(--muted);
-    font-size: 0.84rem;
 }
 
 .timeseries-capture-last-copy {

@@ -77,8 +77,14 @@ export function fetchAnomalyWatchStatus() {
     return requestJson("/anomaly-watch/status");
 }
 
-export function fetchAnomalyAlerts(limit = 5) {
+export function fetchAnomalyAlerts(limit = 1) {
     return requestJson(`/anomaly-alerts?limit=${limit}`);
+}
+
+export function checkAnomalyNow() {
+    return requestJson("/anomaly-watch/check-now", {
+        method: "POST",
+    });
 }
 
 export function downloadModelDataTemplate() {

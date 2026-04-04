@@ -230,6 +230,7 @@ export interface AnomalyWatchStatus {
     webhook_kind?: string | null
     poll_seconds?: number | null
     min_area_percent?: number | null
+    frame_min_area_percent?: number | null
     persist_frames?: number | null
     cooldown_seconds?: number | null
     diff_threshold?: number | null
@@ -245,8 +246,14 @@ export interface AnomalyWatchStatus {
     last_error?: string | null
     last_alert_at?: string | null
     last_alert_area_percent?: number | null
+    last_alert_source?: string | null
     last_changed_area_percent?: number | null
+    last_largest_blob_percent?: number | null
     last_coverage_percent?: number | null
+    last_coverage_delta_percent?: number | null
+    last_frame_changed_area_percent?: number | null
+    last_frame_largest_blob_percent?: number | null
+    last_candidate_source?: string | null
     last_light_state?: string | null
     last_webhook_ok?: boolean | null
     last_webhook_message?: string | null
@@ -258,16 +265,45 @@ export interface AnomalyAlert {
     detected_at?: string | null
     summary_text?: string | null
     light_is_on?: boolean | null
+    detection_source?: string | null
     green_coverage_percent?: number | null
     coverage_delta_percent?: number | null
     changed_area_percent?: number | null
     largest_blob_percent?: number | null
+    surface_changed_area_percent?: number | null
+    surface_largest_blob_percent?: number | null
+    frame_changed_area_percent?: number | null
+    frame_largest_blob_percent?: number | null
     raw_url?: string | null
     overlay_url?: string | null
     diff_url?: string | null
     webhook_delivered?: boolean | null
     webhook_response_status?: number | null
     webhook_error?: string | null
+}
+
+export interface AnomalyCheckResult {
+    status?: string | null
+    message?: string | null
+    enabled?: boolean | null
+    manual?: boolean | null
+    baseline_ready?: boolean | null
+    light_state?: string | null
+    candidate_detected?: boolean | null
+    candidate_source?: string | null
+    alert_created?: boolean | null
+    alert_active?: boolean | null
+    largest_blob_percent?: number | null
+    changed_area_percent?: number | null
+    coverage_delta_percent?: number | null
+    min_area_percent?: number | null
+    changed_area_threshold?: number | null
+    frame_largest_blob_percent?: number | null
+    frame_changed_area_percent?: number | null
+    frame_min_area_percent?: number | null
+    frame_changed_area_threshold?: number | null
+    alert_blob_percent?: number | null
+    alert_changed_area_percent?: number | null
 }
 
 export interface DashboardState {
