@@ -1528,6 +1528,19 @@ label {
     transform: translateY(-1px);
 }
 
+.schedule-repeat-toggle {
+    width: fit-content;
+}
+
+.schedule-repeat-toggle span {
+    justify-content: center;
+    min-width: 14rem;
+}
+
+.scheduler-builder label.is-disabled {
+    opacity: 0.52;
+}
+
 .schedule-submit-button {
     width: 100%;
     min-height: 3.95rem;

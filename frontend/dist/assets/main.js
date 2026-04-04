@@ -31,6 +31,7 @@ const DAY_OPTIONS = [
     ["sat", "Sat"],
     ["sun", "Sun"],
 ];
+const EVERYDAY_VALUES = DAY_OPTIONS.map(([value]) => value);
 
 const POLL_VISIBLE_MS = 30000;
 const POLL_HIDDEN_MS = 30000;
@@ -401,9 +402,13 @@ function createLayout() {
                                             <span class="card-label">Light Schedule</span>
                                             <strong>ตั้งเวลาเปิดปิดอัตโนมัติ</strong>
                                         </div>
-                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุดและเวลา ระบบจะไม่รับวันย้อนหลัง</span>
+                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด หรือเลือกให้ทำงานเวลาเดิมทุกวัน</span>
                                     </div>
                                     <form id="light-schedule-form" class="stack scheduler-form">
+                                        <label class="day-option schedule-toggle schedule-repeat-toggle">
+                                            <input id="light-repeat-daily" type="checkbox">
+                                            <span>ทำงานทุกวัน เวลาเดิม</span>
+                                        </label>
                                         <div class="inline-fields">
                                             <label for="light-start-date">
                                                 Start date
@@ -504,9 +509,13 @@ function createLayout() {
                                             <span class="card-label">Water Pump Schedule</span>
                                             <strong>ตั้งรอบให้น้ำอัตโนมัติ</strong>
                                         </div>
-                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด เวลา และจำนวนลิตรต่อรอบ</span>
+                                        <span class="helper-text">กำหนดช่วงวันที่เริ่ม-สิ้นสุด หรือเลือกให้ทำงานทุกวันเวลาเดิม</span>
                                     </div>
                                     <form id="pump-water-schedule-form" class="stack scheduler-form">
+                                        <label class="day-option schedule-toggle schedule-repeat-toggle">
+                                            <input id="pump-water-repeat-daily" type="checkbox">
+                                            <span>ทำงานทุกวัน เวลาเดิม</span>
+                                        </label>
                                         <div class="inline-fields">
                                             <label for="pump-water-start-date">
                                                 Start date
@@ -1021,6 +1030,39 @@ function bindScheduleDateRange(startId, endId) {
     syncEndDate();
 }
 
+function bindScheduleRepeatToggle(checkboxId, startId, endId) {
+    const checkbox = document.getElementById(checkboxId);
+    const startInput = document.getElementById(startId);
+    const endInput = document.getElementById(endId);
+    if (!checkbox || !startInput || !endInput) {
+        return;
+    }
+
+    const syncState = () => {
+        const repeatDaily = checkbox.checked;
+        startInput.disabled = repeatDaily;
+        endInput.disabled = repeatDaily;
+        startInput.closest("label")?.classList.toggle("is-disabled", repeatDaily);
+        endInput.closest("label")?.classList.toggle("is-disabled", repeatDaily);
+
+        if (!repeatDaily) {
+            const today = getTodayScheduleDateValue();
+            startInput.min = today;
+            if (!startInput.value || startInput.value < today) {
+                startInput.value = today;
+            }
+
+            endInput.min = startInput.value;
+            if (!endInput.value || endInput.value < startInput.value) {
+                endInput.value = startInput.value;
+            }
+        }
+    };
+
+    checkbox.addEventListener("change", syncState);
+    syncState();
+}
+
 function readScheduleDateRange(startId, endId) {
     const startInput = document.getElementById(startId);
     const endInput = document.getElementById(endId);
@@ -1331,6 +1373,15 @@ function formatDays(days) {
     return days
         .map((day) => DAY_OPTIONS.find(([value]) => value === day)?.[1] ?? day)
         .join(" • ");
+}
+
+function isEverydayRule(days) {
+    if (!Array.isArray(days) || days.length !== EVERYDAY_VALUES.length) {
+        return false;
+    }
+
+    const selected = new Set(days);
+    return EVERYDAY_VALUES.every((value) => selected.has(value));
 }
 
 function renderDayChips(days) {
@@ -2061,18 +2112,27 @@ function renderLightRules(rules) {
     container.innerHTML = rules.map(
         (rule) => {
             const hasDateWindow = Boolean(rule.start_date || rule.end_date);
+            const repeatEveryday = isEverydayRule(rule.days);
+            const repeatLabel = repeatEveryday
+                ? "ทุกวัน"
+                : rule.days?.length
+                    ? formatDays(rule.days)
+                    : null;
             const isPending = Boolean(rule.start_date && rule.start_date > today);
             const isEnded = Boolean(rule.end_date && rule.end_date < today);
             const statusTone = !rule.enabled ? "danger" : isEnded ? "danger" : isPending ? "warning" : "active";
-            const statusText = !rule.enabled
-                ? "Disabled"
-                : isEnded
-                    ? "Ended"
-                    : isPending
-                        ? "Starts later"
-                        : hasDateWindow
-                            ? "Active window"
-                            : "Enabled";
+            let statusText = "Enabled";
+            if (!rule.enabled) {
+                statusText = "Disabled";
+            } else if (isEnded) {
+                statusText = "Ended";
+            } else if (isPending) {
+                statusText = "Starts later";
+            } else if (repeatEveryday) {
+                statusText = "Every day";
+            } else if (hasDateWindow) {
+                statusText = "Active window";
+            }
             const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้";
             const endDateLabel = rule.end_date ? formatFullDateLabel(rule.end_date) : startDateLabel;
             const dateWindowMarkup = hasDateWindow
@@ -2087,13 +2147,21 @@ function renderLightRules(rules) {
                     </div>
                 `
                 : "";
+            const repeatMarkup = repeatLabel
+                ? `
+                    <div class="schedule-time-box">
+                        <span>Repeat</span>
+                        <strong>${escapeHtml(repeatLabel)}</strong>
+                    </div>
+                `
+                : "";
 
             return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Light Schedule</span>
-                        <strong>เปิดปิดไฟอัตโนมัติตามช่วงวันที่</strong>
+                        <strong>${repeatEveryday ? "เปิดปิดไฟอัตโนมัติทุกวัน" : "เปิดปิดไฟอัตโนมัติ"}</strong>
                     </div>
                     <span class="mini-chip ${statusTone}">
                         ${statusText}
@@ -2108,6 +2176,7 @@ function renderLightRules(rules) {
                         <span>Off</span>
                         <strong>${escapeHtml(rule.off_time)}</strong>
                     </div>
+                    ${repeatMarkup}
                     ${dateWindowMarkup}
                 </div>
                 <div class="schedule-rule-actions">
@@ -2146,18 +2215,27 @@ function renderPumpWaterRules(rules) {
     container.innerHTML = rules.map(
         (rule) => {
             const hasDateWindow = Boolean(rule.start_date || rule.end_date);
+            const repeatEveryday = isEverydayRule(rule.days);
+            const repeatLabel = repeatEveryday
+                ? "ทุกวัน"
+                : rule.days?.length
+                    ? formatDays(rule.days)
+                    : null;
             const isPending = Boolean(rule.start_date && rule.start_date > today);
             const isEnded = Boolean(rule.end_date && rule.end_date < today);
             const statusTone = !rule.enabled ? "danger" : isEnded ? "danger" : isPending ? "warning" : "active";
-            const statusText = !rule.enabled
-                ? "Disabled"
-                : isEnded
-                    ? "Ended"
-                    : isPending
-                        ? "Starts later"
-                        : hasDateWindow
-                            ? "Active window"
-                            : "Enabled";
+            let statusText = "Enabled";
+            if (!rule.enabled) {
+                statusText = "Disabled";
+            } else if (isEnded) {
+                statusText = "Ended";
+            } else if (isPending) {
+                statusText = "Starts later";
+            } else if (repeatEveryday) {
+                statusText = "Every day";
+            } else if (hasDateWindow) {
+                statusText = "Active window";
+            }
             const startDateLabel = rule.start_date ? formatFullDateLabel(rule.start_date) : "วันนี้";
             const endDateLabel = rule.end_date ? formatFullDateLabel(rule.end_date) : startDateLabel;
             const dateWindowMarkup = hasDateWindow
@@ -2172,13 +2250,21 @@ function renderPumpWaterRules(rules) {
                     </div>
                 `
                 : "";
+            const repeatMarkup = repeatLabel
+                ? `
+                    <div class="schedule-time-box">
+                        <span>Repeat</span>
+                        <strong>${escapeHtml(repeatLabel)}</strong>
+                    </div>
+                `
+                : "";
 
             return `
             <article class="schedule-rule-card">
                 <div class="schedule-rule-top">
                     <div>
                         <span class="card-label">Water Pump Schedule</span>
-                        <strong>รอบให้น้ำอัตโนมัติตามช่วงวันที่</strong>
+                        <strong>${repeatEveryday ? "รอบให้น้ำอัตโนมัติทุกวัน" : "รอบให้น้ำอัตโนมัติ"}</strong>
                     </div>
                     <span class="mini-chip ${statusTone}">
                         ${statusText}
@@ -2193,6 +2279,7 @@ function renderPumpWaterRules(rules) {
                         <span>Water</span>
                         <strong>${formatNumber(rule.water_liters, 2)} L</strong>
                     </div>
+                    ${repeatMarkup}
                     ${dateWindowMarkup}
                 </div>
                 <div class="schedule-rule-actions">
@@ -3880,7 +3967,10 @@ function bindEvents() {
 
     $("light-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const { startDate, endDate } = readScheduleDateRange("light-start-date", "light-end-date");
+        const repeatDaily = document.getElementById("light-repeat-daily")?.checked ?? false;
+        const { startDate, endDate } = repeatDaily
+            ? { startDate: "", endDate: "" }
+            : readScheduleDateRange("light-start-date", "light-end-date");
         const onTime = $("light-on-time").value;
         const offTime = $("light-off-time").value;
 
@@ -3888,8 +3978,9 @@ function bindEvents() {
             await createLightSchedule({
                 on_time: onTime,
                 off_time: offTime,
-                start_date: startDate,
-                end_date: endDate,
+                days: repeatDaily ? [...EVERYDAY_VALUES] : undefined,
+                start_date: repeatDaily ? undefined : startDate,
+                end_date: repeatDaily ? undefined : endDate,
                 enabled: true,
             });
         });
@@ -3897,15 +3988,19 @@ function bindEvents() {
 
     $("pump-water-schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const { startDate, endDate } = readScheduleDateRange("pump-water-start-date", "pump-water-end-date");
+        const repeatDaily = document.getElementById("pump-water-repeat-daily")?.checked ?? false;
+        const { startDate, endDate } = repeatDaily
+            ? { startDate: "", endDate: "" }
+            : readScheduleDateRange("pump-water-start-date", "pump-water-end-date");
         const startTime = $("pump-water-start-time").value;
 
         await runAction("Water pump schedule added", async () => {
             await createPumpWaterSchedule({
                 start_time: startTime,
                 water_liters: readPositiveNumber("pump-water-schedule-liters"),
-                start_date: startDate,
-                end_date: endDate,
+                days: repeatDaily ? [...EVERYDAY_VALUES] : undefined,
+                start_date: repeatDaily ? undefined : startDate,
+                end_date: repeatDaily ? undefined : endDate,
                 enabled: true,
             });
         });
@@ -3937,6 +4032,8 @@ async function bootstrap() {
     bindEvents();
     bindScheduleDateRange("light-start-date", "light-end-date");
     bindScheduleDateRange("pump-water-start-date", "pump-water-end-date");
+    bindScheduleRepeatToggle("light-repeat-daily", "light-start-date", "light-end-date");
+    bindScheduleRepeatToggle("pump-water-repeat-daily", "pump-water-start-date", "pump-water-end-date");
     syncCamera();
     void refreshLiveCameraAnalysis(true);
     await refreshDashboard();
