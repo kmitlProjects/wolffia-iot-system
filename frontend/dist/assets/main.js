@@ -22,7 +22,7 @@ import {
     stopFertilizerPump,
     stopWaterPump,
     turnLight,
-} from "./api.js?v=20260405ac";
+} from "./api.js?v=20260405ae";
 
 const DAY_OPTIONS = [
     ["mon", "Mon"],
@@ -139,14 +139,31 @@ function createLayout() {
                                 <strong id="generated-at">-</strong>
                                 <span class="helper-text">เวลาที่ state ล่าสุดถูกสร้าง</span>
                             </article>
-                            <article class="hero-stat-card info-rail-card">
-                                <span class="card-label">โฟลว์ข้อมูล</span>
-                                <div class="hero-feature-list">
-                                    <span class="mini-chip">Live camera</span>
-                                    <span class="mini-chip">Sensor history</span>
-                                    <span class="mini-chip">Harvest prediction</span>
+                            <article class="summary-card info-rail-card anomaly-watch-card info-rail-anomaly-card">
+                                <div class="summary-card-head">
+                                    <span class="card-label">Anomaly Watch</span>
+                                    <div class="anomaly-watch-head-tools">
+                                        <button id="anomaly-check-button" class="anomaly-watch-db-button" type="button">
+                                            ${renderIcon("camera.svg", "ตรวจสิ่งแปลกปลอมทันที", "anomaly-watch-db-icon")}
+                                            <span>ตรวจทันที</span>
+                                        </button>
+                                        <span id="anomaly-watch-chip" class="mini-chip">-</span>
+                                    </div>
                                 </div>
-                                <span class="helper-text">หน้าเดียวสำหรับดูบ่อ คุมอุปกรณ์ และดูข้อมูลที่ต้องใช้ก่อนตัดสินใจ</span>
+                                <strong id="anomaly-watch-title">-</strong>
+                                <span id="anomaly-watch-copy" class="helper-text">-</span>
+                                <div id="anomaly-watch-metrics" class="anomaly-watch-metrics">
+                                    <div class="anomaly-watch-metric">
+                                        <span class="anomaly-watch-metric-label">Surface Blob</span>
+                                        <strong>-</strong>
+                                        <span class="helper-text">-</span>
+                                    </div>
+                                </div>
+                                <span id="anomaly-watch-debug-copy" class="helper-text anomaly-watch-debug-copy">-</span>
+                                <span id="anomaly-watch-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
+                                <div id="anomaly-watch-preview-wrap" class="anomaly-watch-preview hidden">
+                                    <img id="anomaly-watch-preview" class="anomaly-watch-preview-image" alt="ภาพแจ้งเตือนล่าสุด">
+                                </div>
                             </article>
                         </div>
                     </div>
@@ -329,32 +346,6 @@ function createLayout() {
                             </div>
                             <span id="timeseries-capture-copy" class="helper-text">-</span>
                             <span id="timeseries-capture-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
-                        </article>
-                        <article class="summary-card anomaly-watch-card">
-                            <div class="summary-card-head">
-                                <span class="card-label">Anomaly Watch</span>
-                                <div class="anomaly-watch-head-tools">
-                                    <button id="anomaly-check-button" class="anomaly-watch-db-button" type="button">
-                                        ${renderIcon("camera.svg", "ตรวจสิ่งแปลกปลอมทันที", "anomaly-watch-db-icon")}
-                                        <span>ตรวจทันที</span>
-                                    </button>
-                                    <span id="anomaly-watch-chip" class="mini-chip">-</span>
-                                </div>
-                            </div>
-                            <strong id="anomaly-watch-title">-</strong>
-                            <span id="anomaly-watch-copy" class="helper-text">-</span>
-                            <div id="anomaly-watch-metrics" class="anomaly-watch-metrics">
-                                <div class="anomaly-watch-metric">
-                                    <span class="anomaly-watch-metric-label">Surface Blob</span>
-                                    <strong>-</strong>
-                                    <span class="helper-text">-</span>
-                                </div>
-                            </div>
-                            <span id="anomaly-watch-debug-copy" class="helper-text anomaly-watch-debug-copy">-</span>
-                            <span id="anomaly-watch-last-copy" class="helper-text timeseries-capture-last-copy">-</span>
-                            <div id="anomaly-watch-preview-wrap" class="anomaly-watch-preview hidden">
-                                <img id="anomaly-watch-preview" class="anomaly-watch-preview-image" alt="ภาพแจ้งเตือนล่าสุด">
-                            </div>
                         </article>
                     </div>
                 </aside>
