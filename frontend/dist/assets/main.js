@@ -338,7 +338,7 @@ function createLayout() {
                         </div>
                         <div id="prediction-preview-summary" class="daily-highlight-grid"></div>
                         <div id="prediction-preview-copy" class="rule-card rule-empty">
-                            กด Predict Harvest เพื่อเช็กความพร้อมของข้อมูลล่าสุดและวันเก็บเกี่ยวที่คาด
+                            กด Predict Harvest เพื่อคำนวณจากข้อมูลที่บันทึกล่าสุดในระบบ
                         </div>
                     </div>
                 </section>
@@ -1949,7 +1949,7 @@ function renderPredictionPreview(state) {
     const latestCoverageValue = latestTimeseriesRow?.green_coverage_percent ?? state.sensor?.green_coverage_percent;
     const latestCycleDay = latestTimeseriesRow?.cycle_day_index ?? state.daily_summary?.cycle_day_index ?? null;
     const latestTimeseriesCopy = latestTimeseriesRow?.timestamp
-        ? formatTimestamp(latestTimeseriesRow.timestamp)
+        ? `บันทึกล่าสุด ${formatTimestamp(latestTimeseriesRow.timestamp)}`
         : "ยังไม่มี hourly row ในรอบปลูก";
     const latestTimeseriesMeta = latestTimeseriesRow
         ? `Temp ${formatNumber(latestTimeseriesRow.temp, 1)} °C • pH ${formatNumber(latestTimeseriesRow.ph, 2)}`
@@ -1967,7 +1967,7 @@ function renderPredictionPreview(state) {
                 </span>
             </article>
             <article class="summary-card">
-                <span class="card-label">Latest Coverage</span>
+                <span class="card-label">Latest Saved Coverage</span>
                 <strong>${formatNumber(latestCoverageValue, 2)} %</strong>
                 <span class="helper-text">${escapeHtml(latestTimeseriesCopy)}</span>
             </article>
@@ -1978,7 +1978,7 @@ function renderPredictionPreview(state) {
             </article>
         `;
         copyContainer.innerHTML = `
-            กด Predict Harvest เพื่อเช็กความพร้อมของข้อมูลล่าสุดและวันเก็บเกี่ยวที่คาด
+            กด Predict Harvest เพื่อเช็กความพร้อมของข้อมูลที่บันทึกล่าสุดและวันเก็บเกี่ยวที่คาด
         `;
         return;
     }
