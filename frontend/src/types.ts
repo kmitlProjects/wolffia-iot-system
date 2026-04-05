@@ -1,11 +1,5 @@
-export interface SensorReading {
-    _id: string
-    temp?: number | null
-    ph?: number | null
-    green_coverage_percent?: number | null
-    coverage_method?: string | null
-    coverage_version?: string | null
-    timestamp?: string | null
+// Shared data fragments
+export interface CycleContext {
     cycle_id?: string | null
     cycle_name?: string | null
     cycle_status?: string | null
@@ -14,6 +8,61 @@ export interface SensorReading {
     target_harvest_days?: number | null
     expected_harvest_at?: string | null
     expected_days_to_harvest?: number | null
+}
+
+export interface CoverageRoi {
+    x: number
+    y: number
+    width: number
+    height: number
+    corner_radius?: number | null
+    reference_width?: number | null
+    reference_height?: number | null
+}
+
+export interface CoverageThresholds {
+    h_min?: number | null
+    h_max?: number | null
+    s_min?: number | null
+    v_min?: number | null
+    exg_threshold?: string | null
+    preprocess?: string | null
+}
+
+export interface CoverageAnalysisSummary {
+    green_coverage_percent?: number | null
+    green_pixels?: number | null
+    total_pixels?: number | null
+    coverage_method?: string | null
+    coverage_version?: string | null
+    coverage_roi?: CoverageRoi | null
+    coverage_thresholds?: CoverageThresholds | null
+}
+
+export interface AnalysisAssetUrls {
+    raw_url?: string | null
+    mask_url?: string | null
+    overlay_url?: string | null
+}
+
+export interface StoredAnalysisAssetUrls {
+    image_path?: string | null
+    image_url?: string | null
+    mask_path?: string | null
+    mask_url?: string | null
+    overlay_path?: string | null
+    overlay_url?: string | null
+}
+
+// Sensor and analysis data
+export interface SensorReading extends CycleContext {
+    _id: string
+    temp?: number | null
+    ph?: number | null
+    green_coverage_percent?: number | null
+    coverage_method?: string | null
+    coverage_version?: string | null
+    timestamp?: string | null
 }
 
 export interface CameraStatus {
@@ -23,38 +72,10 @@ export interface CameraStatus {
     last_frame_at: number | null
 }
 
-export interface ImageAnalysis {
+export interface ImageAnalysis extends CoverageAnalysisSummary, StoredAnalysisAssetUrls {
     _id: string
     date: string
     timestamp?: string | null
-    image_path?: string | null
-    image_url?: string | null
-    mask_path?: string | null
-    mask_url?: string | null
-    overlay_path?: string | null
-    overlay_url?: string | null
-    green_coverage_percent?: number | null
-    green_pixels?: number | null
-    total_pixels?: number | null
-    coverage_method?: string | null
-    coverage_version?: string | null
-    coverage_roi?: {
-        x: number
-        y: number
-        width: number
-        height: number
-        corner_radius?: number | null
-        reference_width?: number | null
-        reference_height?: number | null
-    } | null
-    coverage_thresholds?: {
-        h_min?: number | null
-        h_max?: number | null
-        s_min?: number | null
-        v_min?: number | null
-        exg_threshold?: string | null
-        preprocess?: string | null
-    } | null
     analysis_source_mode?: string | null
     analysis_source_label?: string | null
     analysis_source_selected_from?: string | null
@@ -62,7 +83,7 @@ export interface ImageAnalysis {
     confidence?: number | null
 }
 
-export interface ImageAnalysisDebug {
+export interface ImageAnalysisDebug extends AnalysisAssetUrls {
     captured_at?: string | null
     source_mode?: string | null
     source_label?: string | null
@@ -70,54 +91,18 @@ export interface ImageAnalysisDebug {
     cycle_day_index?: number | null
     selected_from?: string | null
     requested_day_index?: number | null
-    raw_url?: string | null
-    mask_url?: string | null
-    overlay_url?: string | null
 }
 
-export interface LiveCameraAnalysis {
+export interface LiveCameraAnalysis extends CoverageAnalysisSummary, AnalysisAssetUrls {
     captured_at?: string | null
-    green_coverage_percent?: number | null
-    green_pixels?: number | null
-    total_pixels?: number | null
     image_width?: number | null
     image_height?: number | null
-    coverage_method?: string | null
-    coverage_version?: string | null
-    coverage_roi?: {
-        x: number
-        y: number
-        width: number
-        height: number
-        corner_radius?: number | null
-        reference_width?: number | null
-        reference_height?: number | null
-    } | null
-    coverage_thresholds?: {
-        h_min?: number | null
-        h_max?: number | null
-        s_min?: number | null
-        v_min?: number | null
-        exg_threshold?: string | null
-        preprocess?: string | null
-    } | null
-    raw_url?: string | null
-    mask_url?: string | null
-    overlay_url?: string | null
 }
 
-export interface DailySummary {
+export interface DailySummary extends CycleContext {
     _id: string
     date: string
     timezone?: string | null
-    cycle_id?: string | null
-    cycle_name?: string | null
-    cycle_status?: string | null
-    cycle_planted_at?: string | null
-    cycle_day_index?: number | null
-    target_harvest_days?: number | null
-    expected_harvest_at?: string | null
-    expected_days_to_harvest?: number | null
     sensor_count?: number | null
     coverage_count?: number | null
     first_sensor_at?: string | null
@@ -151,6 +136,7 @@ export interface GrowCycle {
     notes?: string | null
 }
 
+// Actuator and automation state
 export interface LightStatus {
     pin: number
     active_low: boolean
@@ -190,31 +176,30 @@ export interface ActuatorState {
     pump_fertilizer: PumpFertilizerStatus
 }
 
-export interface LightRule {
-    id: string
-    device: "light"
-    enabled: boolean
+export interface ScheduleDateRange {
     days?: string[]
     start_date?: string | null
     end_date?: string | null
-    on_time: string
-    off_time: string
+}
+
+export interface AutomationRuleBase extends ScheduleDateRange {
+    id: string
+    enabled: boolean
     created_at?: string | null
     updated_at?: string | null
 }
 
-export interface PumpWaterRule {
-    id: string
+export interface LightRule extends AutomationRuleBase {
+    device: "light"
+    on_time: string
+    off_time: string
+}
+
+export interface PumpWaterRule extends AutomationRuleBase {
     device: "pump_water"
-    enabled: boolean
-    days?: string[]
-    start_date?: string | null
-    end_date?: string | null
     start_time: string
     duration_seconds: number
     water_liters?: number | null
-    created_at?: string | null
-    updated_at?: string | null
 }
 
 export interface AutomationState {
@@ -306,15 +291,65 @@ export interface AnomalyCheckResult {
     alert_changed_area_percent?: number | null
 }
 
+// Dashboard aggregates
+export interface DashboardMeta {
+    generated_at: string
+    timezone: string
+}
+
+export interface CameraState {
+    stream_url: string
+    status: CameraStatus
+}
+
+export interface TimeseriesSummary {
+    total_rows?: number | null
+    last_24h_rows?: number | null
+    last_7d_rows?: number | null
+    last_14d_rows?: number | null
+}
+
+export interface AnomalyWatchState {
+    status?: AnomalyWatchStatus | null
+    latest_alert?: AnomalyAlert | null
+    latest_preview_url?: string | null
+    latest_preview_token?: string | null
+}
+
+export interface TimeseriesCapturePolicy {
+    mode?: "keep_light_state" | "force_light_off" | string | null
+    force_light_off?: boolean | null
+    light_settle_seconds?: number | null
+    restore_light_after_capture?: boolean | null
+}
+
+export interface WaterPumpDosingConfig {
+    pump_flow_l_per_min?: number | null
+    seconds_per_liter?: number | null
+}
+
+export interface FertilizerDosingConfig {
+    pump_flow_ml_per_min?: number | null
+    dose_ml_per_10l?: number | null
+    dose_ml_per_liter?: number | null
+    seconds_per_liter?: number | null
+}
+
+export interface ModelDataState {
+    latest_seed_cycle_id?: string | null
+    sensor_interval_seconds?: number | null
+    training_dataset_download_url?: string | null
+    template_download_url?: string | null
+    harvest_model_enabled?: boolean
+    harvest_model_path?: string | null
+    timeseries_capture?: TimeseriesCapturePolicy | null
+    water_pump_dosing?: WaterPumpDosingConfig | null
+    fertilizer_dosing?: FertilizerDosingConfig | null
+}
+
 export interface DashboardState {
-    meta: {
-        generated_at: string
-        timezone: string
-    }
-    camera: {
-        stream_url: string
-        status: CameraStatus
-    }
+    meta: DashboardMeta
+    camera: CameraState
     sensor: SensorReading | null
     image_analysis: ImageAnalysis | null
     image_analysis_debug: ImageAnalysisDebug | null
@@ -322,43 +357,10 @@ export interface DashboardState {
     grow_cycle: GrowCycle | null
     actuators: ActuatorState
     automation: AutomationState
-    timeseries?: {
-        total_rows?: number | null
-        last_24h_rows?: number | null
-        last_7d_rows?: number | null
-        last_14d_rows?: number | null
-    }
+    timeseries?: TimeseriesSummary
     prediction_latest?: unknown
-    anomaly_watch?: {
-        status?: AnomalyWatchStatus | null
-        latest_alert?: AnomalyAlert | null
-        latest_preview_url?: string | null
-        latest_preview_token?: string | null
-    } | null
-    model_data?: {
-        latest_seed_cycle_id?: string | null
-        sensor_interval_seconds?: number | null
-        training_dataset_download_url?: string | null
-        template_download_url?: string | null
-        harvest_model_enabled?: boolean
-        harvest_model_path?: string | null
-        timeseries_capture?: {
-            mode?: "keep_light_state" | "force_light_off" | string | null
-            force_light_off?: boolean | null
-            light_settle_seconds?: number | null
-            restore_light_after_capture?: boolean | null
-        } | null
-        water_pump_dosing?: {
-            pump_flow_l_per_min?: number | null
-            seconds_per_liter?: number | null
-        } | null
-        fertilizer_dosing?: {
-            pump_flow_ml_per_min?: number | null
-            dose_ml_per_10l?: number | null
-            dose_ml_per_liter?: number | null
-            seconds_per_liter?: number | null
-        } | null
-    }
+    anomaly_watch?: AnomalyWatchState | null
+    model_data?: ModelDataState
 }
 
 export interface HarvestPredictionPreviewResponse {
@@ -411,20 +413,17 @@ export interface HarvestPredictionPreviewResponse {
     }
 }
 
-export interface LightSchedulePayload {
-    on_time: string
-    off_time: string
-    days?: string[]
-    start_date?: string | null
-    end_date?: string | null
+// Request payloads
+export interface SchedulePayloadBase extends ScheduleDateRange {
     enabled: boolean
 }
 
-export interface PumpWaterSchedulePayload {
+export interface LightSchedulePayload extends SchedulePayloadBase {
+    on_time: string
+    off_time: string
+}
+
+export interface PumpWaterSchedulePayload extends SchedulePayloadBase {
     start_time: string
     water_liters: number
-    days?: string[]
-    start_date?: string | null
-    end_date?: string | null
-    enabled: boolean
 }

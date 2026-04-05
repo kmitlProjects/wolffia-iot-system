@@ -6,7 +6,7 @@ from gpiozero.exc import SPISoftwareFallback
 from gpiozero.pins.lgpio import LGPIOFactory
 
 MCP3008_CHANNEL = 0  # pH sensor Po -> MCP3008 pin 1 (CH0)
-PH7_VOLTAGE = 1.65 # ใช้ค่าเดิมไว้ก่อน ควร calibrate ใหม่เมื่อเปลี่ยน ADC
+PH7_VOLTAGE = 1.00 # ใช้ค่าเดิมไว้ก่อน ควร calibrate ใหม่เมื่อเปลี่ยน ADC
 SLOPE = 0.18         # ใช้ logic เดิมไว้ก่อน
 
 warnings.filterwarnings("ignore", category=SPISoftwareFallback)
